@@ -13,15 +13,15 @@ def build():
     channel = Channel(sched)
     channel.controller = LearningController()
     s1 = Switch(sched, "s1", channel)
-    h1 = Host(sched, "h1", "00:00:00:00:00:01")
-    h2 = Host(sched, "h2", "00:00:00:00:00:02")
+    h1 = Host(sched, "h1", "00:00:00:00:00:01", "10.0.0.1")
+    h2 = Host(sched, "h2", "00:00:00:00:00:02", "10.0.0.2")
     Link(sched, h1, 1, s1, 1)
     Link(sched, h2, 1, s1, 2)
     return sched, channel, h1, h2
 
 
 def ping_and_run(sched, h1, h2, seq):
-    sched.schedule(0.1, h1.ping, h2.mac, seq)
+    sched.schedule(0.1, h1.ping, h2.mac, seq, h2.ip)
     sched.run()
 
 
