@@ -11,7 +11,7 @@ class Switch:
         now = self.sched.now
         self.flows = [
             f for f in self.flows
-            if f["idle_timeout"] is None or (now - f["last_hit"]) <= f["idle_timeout"]
+            if f["idle_timeout"] is None or (now - f["last_hit"]) < f["idle_timeout"]
             
         ]
 
