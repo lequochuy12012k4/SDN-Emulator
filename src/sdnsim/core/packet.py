@@ -10,3 +10,4 @@ class Packet:
     sent_at: float = 0.0
     ip_src: str | None = None
     ip_dst: str | None = None
+    size: int = 64
