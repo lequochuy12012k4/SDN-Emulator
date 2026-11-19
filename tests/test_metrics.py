@@ -43,3 +43,15 @@ def test_table_misses_equal_packet_in():
 def test_snapshot_is_json_serializable():
     snap, _ = run_pings(1)
     assert json.loads(json.dumps(snap))["packet_in_total"] == snap["packet_in_total"]
+
+def test_snapshot_lists_each_link_once():
+    snap, _ = run_pings(1)
+    links = [frozenset({(l["a"], l["a_port"]), (l["b"], l["b_port"])})
+             for l in snap["links"]]
+    assert len(links) == 4          # mỗi link đúng một lần, không lặp hai chiều
+    assert set(links) == {
+        frozenset({("h1", 1), ("s1", 1)}),
+        frozenset({("h2", 1), ("s1", 2)}),
+        frozenset({("s1", 3), ("s2", 1)}),
+        frozenset({("h3", 1), ("s2", 2)}),
+    }
