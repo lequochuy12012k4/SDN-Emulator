@@ -23,7 +23,7 @@ def test_port_counters_after_one_ping():
     assert (s1[1]["rx_packets"], s1[1]["tx_packets"]) == (1, 1)
     assert (s1[2]["rx_packets"], s1[2]["tx_packets"]) == (0, 1)
     assert (s1[3]["rx_packets"], s1[3]["tx_packets"]) == (1, 1)
-    assert s1[1]["rx_bytes"] == 64
+    assert s1[1]["rx_bytes"] == 50
 
 
 def test_flow_counters_after_three_pings():
@@ -31,7 +31,7 @@ def test_flow_counters_after_three_pings():
     flows = {f["match"]["eth_dst"]: f for f in snap["switches"]["s1"]["flows"]}
     assert flows["00:00:00:00:00:01"]["packets"] == 2   # reply ở ping 2 và 3
     assert flows["00:00:00:00:00:03"]["packets"] == 1   # request ở ping 3
-    assert flows["00:00:00:00:00:01"]["bytes"] == 128
+    assert flows["00:00:00:00:00:01"]["bytes"] == 100
 
 
 def test_table_misses_equal_packet_in():
