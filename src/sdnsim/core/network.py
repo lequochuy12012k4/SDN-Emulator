@@ -39,7 +39,7 @@ def build_network(
     """
     sched = scheduler if scheduler is not None else Scheduler()
     ch = channel if channel is not None else Channel(
-        sched, spec.get("channel_latency", 0.001)
+        sched, spec.get("channel_latency", 0.001), spec.get("channel_down_latency", 0.0)
     )
     ctrl = controller if controller is not None else LearningController(
         idle_timeout=spec.get("controller_idle_timeout")

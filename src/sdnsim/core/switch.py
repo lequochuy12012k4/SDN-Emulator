@@ -1,4 +1,5 @@
 from collections import defaultdict
+from sdnsim.core.messages import FlowMod, PacketOut
 
 SWEEP_INTERVAL = 0.1 
 
@@ -13,6 +14,7 @@ class Switch:
         self._sweep_scheduled = False
         self.port_stats = defaultdict(_new_port_stats)
         self.table_misses = 0
+        channel.register(self)
 
     def receive(self, in_port, pkt):
         # Lazy expiration: remove flows that have exceeded idle_timeout
@@ -80,3 +82,9 @@ class Switch:
                     link.transmit(self, pkt)
         else:
             self._tx(out_port, pkt)
+
+    def handle(self, msg):
+        if isinstance(msg, FlowMod):
+            self.flow_mod(msg.match, msg.out_port, msg.priority, msg.idle_timeout)
+        elif isinstance(msg, PacketOut):
+            self.packet_out(msg.pkt, msg.out_port, msg.in_port)
