@@ -2,7 +2,7 @@ import json
 import pytest
 from pathlib import Path
 
-from sdnsim.core.network import build_network
+from sdnsim.topology.network import build_network
 
 TOPOLOGY_PATH = Path(__file__).resolve().parent.parent / "topologies" / "two_switch.json"
 SPEC = json.loads(TOPOLOGY_PATH.read_text(encoding="utf-8"))

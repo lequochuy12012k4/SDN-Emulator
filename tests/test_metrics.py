@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from sdnsim.core.network import load_network_from_json
+from sdnsim.topology.network import load_network_from_json
 from sdnsim.metrics.collector import Metrics
 
 TOPOLOGY = Path(__file__).resolve().parent.parent / "topologies" / "two_switch.json"

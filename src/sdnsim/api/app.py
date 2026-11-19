@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from sdnsim.core.host import Host
-from sdnsim.core.network import load_network_from_json
+from sdnsim.topology.network import load_network_from_json
 from sdnsim.metrics.collector import Metrics
 from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect

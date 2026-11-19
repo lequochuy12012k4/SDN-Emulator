@@ -2,7 +2,7 @@
 
 import pytest
 
-from sdnsim.core.network import load_network_from_json
+from sdnsim.topology.network import load_network_from_json
 
 from pathlib import Path
 
