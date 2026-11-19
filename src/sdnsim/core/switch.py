@@ -5,7 +5,16 @@ SWEEP_INTERVAL = 0.1
 
 def _new_port_stats():
     return {"rx_packets": 0, "rx_bytes": 0, "tx_packets": 0, "tx_bytes": 0}
+def flow_matches(match, in_port, pkt):
+    """True nếu gói thỏa mọi điều kiện của flow.
 
+    Khóa "in_port" so với cổng mà gói đến; các khóa khác so với thuộc tính cùng tên của Packet.
+    """
+    for key, want in match.items():
+        got = in_port if key == "in_port" else getattr(pkt, key)
+        if got != want:
+            return False
+    return True
 class Switch:
     def __init__(self, sched, name, channel):
         self.sched, self.name, self.channel = sched, name, channel
@@ -29,7 +38,7 @@ class Switch:
         ]
 
         for f in sorted(self.flows, key=lambda f: -f["priority"]):
-            if all(getattr(pkt, k) == v for k, v in f["match"].items()):
+            if flow_matches(f["match"], in_port, pkt):
                 f["packets"] += 1
                 f["bytes"] += pkt.size
                 f["last_hit"] = self.sched.now

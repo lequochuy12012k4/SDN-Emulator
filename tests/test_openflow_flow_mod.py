@@ -50,6 +50,13 @@ def test_flow_mod_golden_bytes():
     assert len(msg.body) == 80
 
 
+def test_in_port_match_golden_bytes():
+    msg = pack_flow_mod({"eth_dst": H3, "in_port": 1}, 3)
+    # match dài 22 byte (đệm tới 24): IN_PORT (field 0, 4 byte) đứng trước ETH_DST (field 3)
+    assert msg.body[40:64] == bytes.fromhex(
+        "00010016" "80000004" "00000001" "80000606" "000000000003" "0000")
+
+
 def test_table_miss_flow_golden_bytes():
     msg = pack_flow_mod({}, "CONTROLLER", priority=0)
     assert msg.body[40:48] == bytes.fromhex("00010004" "00000000")     # match rỗng
@@ -64,6 +71,8 @@ def test_table_miss_flow_golden_bytes():
     ({"eth_dst": H1, "eth_src": H3}, "FLOOD", 10, 30.0),
     ({"eth_src": H1}, 7, 65535, 1.0),
     ({}, "CONTROLLER", 0, None),
+    ({"in_port": 1, "eth_dst": H3, "eth_src": H1}, 3, 1, None),
+    ({"in_port": 2}, "FLOOD", 5, 10.0),
 ])
 def test_flow_mod_roundtrip(match, out_port, priority, idle):
     spec = parse_flow_mod(pack_flow_mod(match, out_port, priority, idle))
@@ -89,6 +98,9 @@ def test_pack_rejects_bad_inputs():
         pack_flow_mod({"kind": "icmp_req"}, 1)             # trường match chưa hỗ trợ
     with pytest.raises(ValueError):
         pack_flow_mod({"eth_dst": "00:11"}, 1)             # MAC sai độ dài
+    for bad_in_port in (0, -1, "1", None, True, 0xFFFFFFFD):
+        with pytest.raises(ValueError):
+            pack_flow_mod({"in_port": bad_in_port}, 1)
     for bad_port in (0, -1, "ALL", None, 0xFFFFFFFE):
         with pytest.raises(ValueError):
             pack_flow_mod({}, bad_port)
@@ -117,6 +129,26 @@ def test_parse_rejects_unknown_or_masked_match_field():
     # bật cờ mask
     with pytest.raises(ValueError):
         parse_flow_mod(mutated(lambda b: b.__setitem__(MATCH_AT + 6, (3 << 1) | 1)))
+
+
+def test_parse_rejects_bad_in_port_match():
+    base = pack_flow_mod({"in_port": 1}, 3)
+    in_port_value_at = MATCH_AT + 8                        # sau header match (4) + header OXM (4)
+
+    zero = bytearray(base.body)
+    struct.pack_into("!I", zero, in_port_value_at, 0)      # cổng 0 không tồn tại
+    with pytest.raises(ValueError):
+        parse_flow_mod(Message(OFPT_FLOW_MOD, body=bytes(zero)))
+
+    special = bytearray(base.body)
+    struct.pack_into("!I", special, in_port_value_at, 0xFFFFFFFD)   # OFPP_CONTROLLER
+    with pytest.raises(ValueError):
+        parse_flow_mod(Message(OFPT_FLOW_MOD, body=bytes(special)))
+
+    masked = bytearray(base.body)
+    masked[MATCH_AT + 6] |= 1                              # bật cờ mask
+    with pytest.raises(ValueError):
+        parse_flow_mod(Message(OFPT_FLOW_MOD, body=bytes(masked)))
 
 
 def test_parse_rejects_bad_instructions():

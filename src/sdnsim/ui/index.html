@@ -133,9 +133,10 @@
                 sw += "<table>" + head(["Cổng", "rx gói", "rx byte", "tx gói", "tx byte"]);
                 for (const [p, c] of Object.entries(x.ports))
                     sw += row([p, c.rx_packets, c.rx_bytes, c.tx_packets, c.tx_bytes]);
-                sw += "</table><table>" + head(["eth_dst", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout"]);
+                sw += "</table><table>" + head(["match", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout"]);
                 for (const f of x.flows)
-                    sw += row([f.match.eth_dst, f.out_port, f.priority, f.packets, f.bytes, f.idle_timeout ?? "-"]);
+                    sw += row([Object.entries(f.match).map(([k, v]) => `${k}=${v}`).join(", ") || "(mọi gói)",
+     f.out_port, f.priority, f.packets, f.bytes, f.idle_timeout ?? "-"])
                 sw += "</table>";
             }
             $("switches").innerHTML = sw;

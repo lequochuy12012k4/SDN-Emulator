@@ -5,14 +5,14 @@ Phạm vi cố ý hẹp:
     Khi đọc, các trường OXM khác được bỏ qua, IN_PORT là bắt buộc.
   - PACKET_OUT: đúng một action OUTPUT, không dùng buffer, kèm dữ liệu gói.
     FLOOD và ALL đều đọc thành "FLOOD" (switch mô phỏng loại trừ cổng vào).
-  - FLOW_MOD: chỉ command ADD, một bảng (table 0), match chỉ gồm eth_dst/eth_src,
+  - FLOW_MOD: chỉ command ADD, một bảng (table 0), match gồm in_port/eth_dst/eth_src,
     đúng một instruction APPLY_ACTIONS chứa đúng một action OUTPUT.
     Khi đọc, trường match lạ bị TỪ CHỐI (không bỏ qua như PACKET_IN), vì bỏ qua sẽ
     làm flow khớp rộng hơn controller định. Cờ (flags) và cookie được bỏ qua.
 """
 
 import struct
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 from sdnsim.core.packet import Packet
 
@@ -57,9 +57,6 @@ ACTION_OUTPUT = struct.Struct("!IH6x")        # port, max_len, đệm 6  (cả a
 FLOW_MOD_FIXED = struct.Struct("!QQBBHHHIIIH2x")
 INSTRUCTION_HEADER = struct.Struct("!HH4x")   # type, length, đệm 4 (instruction actions)
 
-FLOW_MATCH_FIELDS = {"eth_dst": OXM_OF_ETH_DST, "eth_src": OXM_OF_ETH_SRC}
-FLOW_FIELD_NAMES = {v: k for k, v in FLOW_MATCH_FIELDS.items()}
-
 
 class FlowSpec(NamedTuple):
     match: dict
@@ -79,6 +76,35 @@ def _mac_to_bytes(mac: str) -> bytes:
 
 def _bytes_to_mac(raw: bytes) -> str:
     return ":".join(f"{b:02x}" for b in raw)
+
+
+def _port_to_bytes(port: int) -> bytes:
+    if not isinstance(port, int) or isinstance(port, bool) or not 0 < port <= OFPP_MAX:
+        raise ValueError(f"in_port không hợp lệ: {port!r}")
+    return struct.pack("!I", port)
+
+
+def _bytes_to_port(raw: bytes) -> int:
+    port = struct.unpack("!I", raw)[0]
+    if not 0 < port <= OFPP_MAX:
+        raise ValueError(f"in_port không hợp lệ: {port}")
+    return port
+
+
+class _Field(NamedTuple):
+    number: int                  # số hiệu trường OXM
+    length: int                  # độ dài giá trị (byte)
+    encode: Callable             # giá trị Python -> byte
+    decode: Callable             # byte -> giá trị Python
+
+
+# Các trường match mà FLOW_MOD hỗ trợ. Khoá là tên khóa trong dict match của simulator.
+FLOW_FIELDS = {
+    "in_port": _Field(OXM_OF_IN_PORT, 4, _port_to_bytes, _bytes_to_port),
+    "eth_dst": _Field(OXM_OF_ETH_DST, 6, _mac_to_bytes, _bytes_to_mac),
+    "eth_src": _Field(OXM_OF_ETH_SRC, 6, _mac_to_bytes, _bytes_to_mac),
+}
+FLOW_FIELD_NAMES = {f.number: name for name, f in FLOW_FIELDS.items()}
 
 
 def _pack_match(oxm: bytes) -> bytes:
@@ -250,14 +276,14 @@ def _timeout_to_wire(idle_timeout: float | None) -> int:
 
 
 def _match_to_oxm(match: dict) -> bytes:
-    unknown = set(match) - set(FLOW_MATCH_FIELDS)
+    unknown = set(match) - set(FLOW_FIELDS)
     if unknown:
         raise ValueError(f"trường match chưa được hỗ trợ: {sorted(unknown)}")
     oxm = b""
-    for name in sorted(match, key=lambda n: FLOW_MATCH_FIELDS[n]):   # thứ tự cố định
-        field = FLOW_MATCH_FIELDS[name]
-        oxm += OXM_HEADER.pack(OFPXMC_OPENFLOW_BASIC, field << 1, 6)
-        oxm += _mac_to_bytes(match[name])
+    for name in sorted(match, key=lambda n: FLOW_FIELDS[n].number):   # thứ tự cố định
+        fld = FLOW_FIELDS[name]
+        oxm += OXM_HEADER.pack(OFPXMC_OPENFLOW_BASIC, fld.number << 1, fld.length)
+        oxm += fld.encode(match[name])
     return oxm
 
 
@@ -306,9 +332,10 @@ def parse_flow_mod(msg: Message) -> FlowSpec:
         if name is None:
             raise ValueError(
                 f"trường match (class=0x{oxm_class:04x}, field={field}) chưa được hỗ trợ")
-        if masked or len(value) != 6:
+        fld = FLOW_FIELDS[name]
+        if masked or len(value) != fld.length:
             raise ValueError(f"trường match {name} không hợp lệ (có mask hoặc sai độ dài)")
-        match[name] = _bytes_to_mac(value)
+        match[name] = fld.decode(value)
 
     ports: list[int] = []
     pos = end
