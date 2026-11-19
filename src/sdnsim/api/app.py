@@ -7,14 +7,18 @@ from pydantic import BaseModel
 from sdnsim.core.host import Host
 from sdnsim.core.network import load_network_from_json
 from sdnsim.metrics.collector import Metrics
+from pathlib import Path
+from fastapi import WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 
+INDEX = Path(__file__).resolve().parent.parent / "ui" / "index.html"
 
 class PingRequest(BaseModel):
     src: str
     dst: str
 
 
-def create_app(topology_path, step=0.05, speed=1.0, autorun=True):
+def create_app(topology_path, step=0.05, speed=1.0, autorun=True, push_interval=0.2):
     sched, ch, nodes = load_network_from_json(topology_path)
     metrics = Metrics(sched, ch, nodes)
     counter = {"seq": 0}
@@ -33,6 +37,23 @@ def create_app(topology_path, step=0.05, speed=1.0, autorun=True):
 
     app = FastAPI(lifespan=lifespan)
     app.state.sched = sched
+
+    @app.get("/")
+    async def index():
+        return FileResponse(INDEX)
+
+    @app.websocket("/ws")
+    async def ws_endpoint(ws: WebSocket):
+        await ws.accept()
+        try:
+            while True:
+                await ws.send_json(metrics.snapshot())
+                try:   # chờ tối đa push_interval; đồng thời phát hiện client ngắt kết nối
+                    await asyncio.wait_for(ws.receive_text(), timeout=push_interval)
+                except asyncio.TimeoutError:
+                    pass
+        except WebSocketDisconnect:
+            pass
 
     @app.get("/snapshot")
     def snapshot():

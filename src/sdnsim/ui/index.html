@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <title>SDN Emulator</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 16px;
+        }
+
+        table {
+            border-collapse: collapse;
+            margin: 6px 0 14px;
+        }
+
+        th,
+        td {
+            border: 1px solid #bbb;
+            padding: 3px 10px;
+            text-align: right;
+        }
+
+        th {
+            background: #eee;
+        }
+
+        .bar span {
+            margin-right: 20px;
+        }
+
+        h3 {
+            margin: 14px 0 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>SDN Emulator</h2>
+    <div class="bar">
+        <span>Kết nối: <b id="status">...</b></span>
+        <span>Giờ ảo: <b id="time">-</b></span>
+        <span>PACKET_IN: <b id="pin">-</b></span>
+    </div>
+    <p>
+        Ping từ <select id="src"></select> tới <select id="dst"></select>
+        <button id="go">Ping</button>
+    </p>
+    <div id="hosts"></div>
+    <div id="switches"></div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        const row = cells => "<tr>" + cells.map(c => `<td>${esc(c)}</td>`).join("") + "</tr>";
+        const head = cols => "<tr>" + cols.map(c => `<th>${esc(c)}</th>`).join("") + "</tr>";
+
+        function fillSelects(hosts) {
+            if ($("src").options.length) return;           // chỉ điền một lần
+            for (const name of Object.keys(hosts)) {
+                $("src").add(new Option(name, name));
+                $("dst").add(new Option(name, name));
+            }
+            if ($("dst").options.length > 1) $("dst").selectedIndex = 1;
+        }
+
+        function render(s) {
+            $("time").textContent = s.time.toFixed(2) + " s";
+            $("pin").textContent = s.packet_in_total;
+            fillSelects(s.hosts);
+
+            let h = "<h3>Host</h3><table>" + head(["Tên", "IP", "Số ping", "RTT gần nhất (ms)"]);
+            for (const [name, x] of Object.entries(s.hosts)) {
+                const last = x.rtts.length ? (x.rtts[x.rtts.length - 1] * 1000).toFixed(2) : "-";
+                h += row([name, x.ip, x.rtts.length, last]);
+            }
+            $("hosts").innerHTML = h + "</table>";
+
+            let sw = "";
+            for (const [name, x] of Object.entries(s.switches)) {
+                sw += `<h3>Switch ${esc(name)} (table-miss: ${x.table_misses})</h3>`;
+                sw += "<table>" + head(["Cổng", "rx gói", "rx byte", "tx gói", "tx byte"]);
+                for (const [p, c] of Object.entries(x.ports))
+                    sw += row([p, c.rx_packets, c.rx_bytes, c.tx_packets, c.tx_bytes]);
+                sw += "</table><table>" + head(["eth_dst", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout"]);
+                for (const f of x.flows)
+                    sw += row([f.match.eth_dst, f.out_port, f.priority, f.packets, f.bytes, f.idle_timeout ?? "-"]);
+                sw += "</table>";
+            }
+            $("switches").innerHTML = sw;
+        }
+
+        const ws = new WebSocket(`ws://${location.host}/ws`);
+        ws.onopen = () => $("status").textContent = "đã kết nối";
+        ws.onclose = () => $("status").textContent = "mất kết nối";
+        ws.onmessage = e => render(JSON.parse(e.data));
+
+        $("go").onclick = () => fetch("/ping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ src: $("src").value, dst: $("dst").value }),
+        });
+    </script>
+</body>
+
+</html>
