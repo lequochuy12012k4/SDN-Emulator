@@ -4,7 +4,7 @@ from pathlib import Path
 from sdnsim.core.messages import PacketIn
 from sdnsim.topology.network import build_network, load_network_from_json
 
-TOPOLOGY = Path(__file__).resolve().parent.parent / "topologies" / "two_switch.json"
+TOPOLOGY = Path(__file__).resolve().parent / "fixtures" / "two_switch_three_host.json"
 
 
 def test_controller_receives_packet_in_messages():

@@ -49,12 +49,18 @@ OFPT_ERROR = 1
 OFPT_SET_CONFIG = 9
 OFPT_BARRIER_REQUEST = 20
 OFPT_BARRIER_REPLY = 21
+OFPT_MULTIPART_REQUEST = 18
+OFPT_MULTIPART_REPLY = 19
+OFPMP_PORT_DESC = 13            # loại multipart duy nhất ta hỗ trợ
+OFPPF_1GB_FD = 1 << 5
 
 # Loại và mã lỗi của ERROR (đã đối chiếu với os-ken)
 OFPET_BAD_REQUEST = 1
 OFPET_BAD_ACTION = 2
 OFPET_FLOW_MOD_FAILED = 5
 OFPBRC_BAD_TYPE = 1             # thông điệp không được hỗ trợ
+OFPBRC_BAD_MULTIPART = 2        # loại multipart không được hỗ trợ
+OFPBRC_BAD_LEN = 6              # độ dài thông điệp sai
 OFPBAC_BAD_TYPE = 0             # action không được hỗ trợ
 OFPBAC_BAD_OUT_PORT = 4         # cổng đích không tồn tại
 OFPFMFC_UNKNOWN = 0             # FLOW_MOD bị từ chối, không rõ mã chi tiết
@@ -71,6 +77,10 @@ ACTION_OUTPUT = struct.Struct("!IH6x")        # port, max_len, đệm 6  (cả a
 # cookie, cookie_mask, table_id, command, idle, hard, priority, buffer_id, out_port,
 # out_group, flags, đệm 2  (40 byte, đứng ngay sau header, trước match)
 FLOW_MOD_FIXED = struct.Struct("!QQBBHHHIIIH2x")
+MULTIPART_HEADER = struct.Struct("!HH4x")     # type, flags, đệm 4 (request và reply)
+# port_no, đệm 4, hw_addr, đệm 2, name[16], config, state, curr, advertised, supported,
+# peer, curr_speed, max_speed  (64 byte)
+PORT_DESC_ENTRY = struct.Struct("!I4x6s2x16sIIIIIIII")
 INSTRUCTION_HEADER = struct.Struct("!HH4x")   # type, length, đệm 4 (instruction actions)
 
 
@@ -388,3 +398,42 @@ def parse_error(msg: Message) -> tuple[int, int, bytes]:
         raise ValueError("ERROR bị cắt ngắn")
     err_type, code = struct.unpack_from("!HH", msg.body)
     return err_type, code, msg.body[4:]
+
+
+# ---------------------------------------------------------------- MULTIPART
+
+class PortDesc(NamedTuple):
+    port_no: int
+    mac: str
+    name: str
+
+
+def parse_multipart_request(msg: Message) -> tuple[int, int, bytes]:
+    """Trả về (loại multipart, cờ, phần thân)."""
+    if msg.type != OFPT_MULTIPART_REQUEST:
+        raise ValueError(f"không phải MULTIPART_REQUEST (type={msg.type})")
+    if len(msg.body) < MULTIPART_HEADER.size:
+        raise ValueError("MULTIPART_REQUEST bị cắt ngắn")
+    mp_type, flags = MULTIPART_HEADER.unpack_from(msg.body)
+    return mp_type, flags, msg.body[MULTIPART_HEADER.size:]
+
+
+def pack_port_desc_reply(ports: list[PortDesc], xid: int = 0) -> Message:
+    """MULTIPART_REPLY loại PORT_DESC: mỗi cổng là một ofp_port dài 64 byte.
+
+    Cổng được báo là 1 Gb/s full duplex, đang hoạt động; không mô phỏng trạng thái liên kết.
+    """
+    body = MULTIPART_HEADER.pack(OFPMP_PORT_DESC, 0)        # cờ 0: không còn phần nào nữa
+    for port in ports:
+        if not isinstance(port.port_no, int) or not 0 < port.port_no <= OFPP_MAX:
+            raise ValueError(f"số cổng không hợp lệ: {port.port_no!r}")
+        name = port.name.encode("ascii")
+        if len(name) > 15:
+            raise ValueError(f"tên cổng dài quá 15 ký tự: {port.name!r}")
+        body += PORT_DESC_ENTRY.pack(
+            port.port_no, _mac_to_bytes(port.mac), name,
+            0, 0,                                            # config, state
+            OFPPF_1GB_FD, 0, OFPPF_1GB_FD, 0,                # curr, advertised, supported, peer
+            1_000_000, 1_000_000,                            # curr_speed, max_speed (kb/s)
+        )
+    return Message(OFPT_MULTIPART_REPLY, xid=xid, body=body)

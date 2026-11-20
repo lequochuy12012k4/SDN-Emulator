@@ -40,4 +40,12 @@ class Metrics:
             "switches": switches,
             "hosts": hosts,
             "links": self._links(),
+            "controller": self._controller_status(),
         }
+    
+    def _controller_status(self):
+        connected = getattr(self.channel, "connected", None)
+        if connected is None:
+            return {"mode": "internal"}
+        return {"mode": "openflow",
+                "switches": {n: connected(n) for n in self.channel.switches}}

@@ -40,6 +40,7 @@
     <h2>SDN Emulator</h2>
     <div class="bar">
         <span>Kết nối: <b id="status">...</b></span>
+        <span>Controller: <b id="ctl">-</b></span>
         <span>Giờ ảo: <b id="time">-</b></span>
         <span>PACKET_IN: <b id="pin">-</b></span>
     </div>
@@ -114,7 +115,12 @@
             }
             $("topo").innerHTML = g + "</svg>";
         }
+        
         function render(s) {
+            $("ctl").textContent = s.controller.mode === "openflow"
+            ? "OpenFlow " + Object.entries(s.controller.switches)
+                .map(([n, ok]) => n + (ok ? " ✔" : " ✘")).join(" ")
+            : "nội bộ";
             drawTopo(s);
             $("time").textContent = s.time.toFixed(2) + " s";
             $("pin").textContent = s.packet_in_total;
@@ -133,10 +139,15 @@
                 sw += "<table>" + head(["Cổng", "rx gói", "rx byte", "tx gói", "tx byte"]);
                 for (const [p, c] of Object.entries(x.ports))
                     sw += row([p, c.rx_packets, c.rx_bytes, c.tx_packets, c.tx_bytes]);
-                sw += "</table><table>" + head(["match", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout"]);
+                sw += "</table><table>" + head(["match", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout còn lại"]);
                 for (const f of x.flows)
-                    sw += row([Object.entries(f.match).map(([k, v]) => `${k}=${v}`).join(", ") || "(mọi gói)",
-     f.out_port, f.priority, f.packets, f.bytes, f.idle_timeout ?? "-"])
+                    sw += row([
+                        Object.entries(f.match).map(([k, v]) => `${k}=${v}`).join(", ") || "(mọi gói)",
+                        f.out_port, f.priority, f.packets, f.bytes,
+                        f.idle_timeout == null
+                            ? "-"
+                            : `${Math.max(0, f.idle_timeout - (s.time - f.last_hit)).toFixed(1)} s`
+                    ])
                 sw += "</table>";
             }
             $("switches").innerHTML = sw;

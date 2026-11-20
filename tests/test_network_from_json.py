@@ -6,10 +6,10 @@ from sdnsim.topology.network import load_network_from_json
 
 from pathlib import Path
 
-TOPOLOGY = Path(__file__).resolve().parent.parent / "topologies" / "two_switch.json"
+TOPOLOGY = Path(__file__).resolve().parent / "fixtures" / "two_switch_three_host.json"
 
 def test_load_network_from_json():
-    """Test loading a network from the two_switch.json topology file."""
+    """Test loading the stable two-switch, three-host fixture."""
     sched, ch, nodes = load_network_from_json(TOPOLOGY)
 
     # Verify we have all 5 nodes (3 hosts + 2 switches)

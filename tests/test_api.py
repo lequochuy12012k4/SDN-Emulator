@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from sdnsim.api.app import create_app
 
-TOPOLOGY = Path(__file__).resolve().parent.parent / "topologies" / "two_switch.json"
+TOPOLOGY = Path(__file__).resolve().parent / "fixtures" / "two_switch_three_host.json"
 
 
 def test_ping_then_snapshot():

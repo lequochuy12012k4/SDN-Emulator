@@ -12,6 +12,7 @@ Hai đồng hồ:
     FLOW_MOD luôn được áp dụng trước PACKET_OUT gửi sau nó.
   - Điều này chỉ có tác dụng khi ai đó chạy mô phỏng (sched.run) trong cùng event loop.
 
+Hỗ trợ MULTIPART loại PORT_DESC (controller 1.3 cần nó để vào chế độ chính).
 Thông điệp bị từ chối (codec không hiểu, cổng không tồn tại, loại không hỗ trợ) được
 trả lời bằng ERROR và phiên vẫn giữ nguyên. Chỉ khung hỏng (sai độ dài header) mới
 làm đóng phiên.
@@ -22,10 +23,12 @@ from collections import Counter
 from itertools import count
 
 from .codec import (
-    OFPBAC_BAD_OUT_PORT, OFPBAC_BAD_TYPE, OFPBRC_BAD_TYPE, OFPET_BAD_ACTION,
-    OFPET_BAD_REQUEST, OFPET_FLOW_MOD_FAILED, OFPFMFC_UNKNOWN, OFPT_BARRIER_REPLY,
-    OFPT_BARRIER_REQUEST, OFPT_SET_CONFIG,
-    pack_error, pack_packet_in, parse_flow_mod, parse_packet_out,
+    OFPBAC_BAD_OUT_PORT, OFPBAC_BAD_TYPE, OFPBRC_BAD_LEN, OFPBRC_BAD_MULTIPART,
+    OFPBRC_BAD_TYPE, OFPET_BAD_ACTION, OFPET_BAD_REQUEST, OFPET_FLOW_MOD_FAILED,
+    OFPFMFC_UNKNOWN, OFPMP_PORT_DESC, OFPT_BARRIER_REPLY, OFPT_BARRIER_REQUEST,
+    OFPT_MULTIPART_REQUEST, OFPT_SET_CONFIG, PortDesc,
+    pack_error, pack_packet_in, pack_port_desc_reply, parse_flow_mod,
+    parse_multipart_request, parse_packet_out,
 )
 from .header import OFPT_FLOW_MOD, OFPT_PACKET_OUT, Message
 from .session import OpenFlowSession
@@ -124,6 +127,8 @@ class OpenFlowChannel:
             self._on_packet_out(sw, session, msg)
         elif msg.type == OFPT_FLOW_MOD:
             self._on_flow_mod(sw, session, msg)
+        elif msg.type == OFPT_MULTIPART_REQUEST:
+            self._on_multipart(sw, session, msg)
         elif msg.type == OFPT_BARRIER_REQUEST:
             # Trả lời sau các thông điệp đã xếp lịch trước đó, đúng nghĩa của barrier.
             self._later(self._send, name, session, Message(OFPT_BARRIER_REPLY, xid=msg.xid))
@@ -131,6 +136,24 @@ class OpenFlowChannel:
             pass                # miss_send_len và cờ: switch mô phỏng luôn gửi nguyên gói
         else:
             self._error(sw.name, session, OFPET_BAD_REQUEST, OFPBRC_BAD_TYPE, msg)
+
+    def _on_multipart(self, sw, session, msg: Message) -> None:
+        """Chỉ trả lời mô tả cổng (PORT_DESC). Controller OpenFlow 1.3 như os-ken/Ryu gửi
+        yêu cầu này ngay sau handshake và chỉ bắt đầu xử lý PACKET_IN khi nhận được trả lời."""
+        try:
+            mp_type, _flags, _body = parse_multipart_request(msg)
+        except ValueError:
+            self._error(sw.name, session, OFPET_BAD_REQUEST, OFPBRC_BAD_LEN, msg)
+            return
+        if mp_type != OFPMP_PORT_DESC:
+            self._error(sw.name, session, OFPET_BAD_REQUEST, OFPBRC_BAD_MULTIPART, msg)
+            return
+        dpid = self.dpids[sw.name]
+        ports = [PortDesc(p, f"02:00:00:00:{dpid & 0xFF:02x}:{p & 0xFF:02x}",
+                          f"{sw.name}-eth{p}"[:15])
+                 for p in sorted(sw.ports)]
+        # Gửi ngay, không qua hàng đợi giờ ảo: đây là thông tin cấu hình, không phải lưu lượng.
+        self._send(sw.name, session, pack_port_desc_reply(ports, xid=msg.xid))
 
     def _on_packet_out(self, sw, session, msg: Message) -> None:
         try:

@@ -21,8 +21,9 @@ from os_ken.ofproto import ofproto_v1_3_parser as parser                # noqa: 
 from sdnsim.core.packet import Packet                                   # noqa: E402
 from sdnsim.openflow.codec import (                                     # noqa: E402
     OFPBRC_BAD_TYPE, OFPET_BAD_REQUEST, OFPET_FLOW_MOD_FAILED, OFPFMFC_UNKNOWN,
-    OFPT_BARRIER_REPLY, pack_error, pack_flow_mod, pack_packet_in, pack_packet_out,
-    parse_flow_mod, parse_packet_out,
+    OFPMP_PORT_DESC, OFPT_BARRIER_REPLY, PortDesc, pack_error, pack_flow_mod,
+    pack_packet_in, pack_packet_out, pack_port_desc_reply, parse_flow_mod,
+    parse_multipart_request, parse_packet_out,
 )
 from sdnsim.openflow.frame import packet_to_bytes                       # noqa: E402
 from sdnsim.openflow.header import (                                    # noqa: E402
@@ -86,6 +87,22 @@ def test_os_ken_reads_our_error_messages():
 
     m = os_ken_reads(pack_error(OFPET_BAD_REQUEST, OFPBRC_BAD_TYPE, request))
     assert (m.type, m.code) == (ofp.OFPET_BAD_REQUEST, ofp.OFPBRC_BAD_TYPE)
+
+
+def test_os_ken_reads_our_port_desc_reply():
+    ports = [PortDesc(1, "02:00:00:00:01:01", "s1-eth1"), PortDesc(3, "02:00:00:00:01:03", "s1-eth3")]
+    m = os_ken_reads(pack_port_desc_reply(ports, xid=83))
+    assert type(m).__name__ == "OFPPortDescStatsReply"
+    assert (m.xid, m.type, m.flags) == (83, ofp.OFPMP_PORT_DESC, 0)
+    assert [p.port_no for p in m.body] == [1, 3]
+    assert [p.hw_addr for p in m.body] == ["02:00:00:00:01:01", "02:00:00:00:01:03"]
+    assert [p.name.rstrip(b"\x00") for p in m.body] == [b"s1-eth1", b"s1-eth3"]
+    assert all(p.curr == ofp.OFPPF_1GB_FD and p.curr_speed == 1_000_000 for p in m.body)
+
+
+def test_we_read_os_ken_port_desc_request():
+    msg = we_read(parser.OFPPortDescStatsRequest(datapath=DP, flags=0))
+    assert parse_multipart_request(msg) == (OFPMP_PORT_DESC, 0, b"")
 
 
 def test_os_ken_reads_our_barrier_reply():

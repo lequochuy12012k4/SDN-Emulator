@@ -1,8 +1,21 @@
 import os
 from pathlib import Path
+
 from sdnsim.api.app import create_app
 from dotenv import load_dotenv
-load_dotenv()  # đọc biến môi trường từ .env nếu có
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 DEFAULT = Path(__file__).resolve().parents[3] / "topologies" / "two_switch.json"
-app = create_app(Path(os.environ.get("SDNSIM_TOPOLOGY", DEFAULT)))
+TOPOLOGY = Path(os.environ.get("SDNSIM_TOPOLOGY", DEFAULT))
+
+# SDNSIM_CONTROLLER="127.0.0.1:6653" -> dùng controller OpenFlow bên ngoài.
+# Không đặt biến này -> dùng controller học MAC nội bộ.
+_controller = os.environ.get("SDNSIM_CONTROLLER")
+_openflow = None
+if _controller:
+    _host, _, _port = _controller.rpartition(":")
+    _openflow = (_host or "127.0.0.1", int(_port))
+
+app = create_app(TOPOLOGY, openflow=_openflow)

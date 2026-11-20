@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sdnsim.topology.network import build_network
 
-TOPOLOGY_PATH = Path(__file__).resolve().parent.parent / "topologies" / "two_switch.json"
+TOPOLOGY_PATH = Path(__file__).resolve().parent / "fixtures" / "two_switch_three_host.json"
 SPEC = json.loads(TOPOLOGY_PATH.read_text(encoding="utf-8"))
 
 

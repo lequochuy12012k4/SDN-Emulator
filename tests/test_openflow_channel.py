@@ -11,24 +11,21 @@ import struct
 
 import pytest
 
+from openflow_support import FakeController, advance
 from sdnsim.core.packet import Packet
 from sdnsim.core.scheduler import Scheduler
 from sdnsim.openflow.channel import OpenFlowChannel
 from sdnsim.openflow.codec import (
-    OFPBAC_BAD_OUT_PORT, OFPBRC_BAD_TYPE, OFPET_BAD_ACTION, OFPET_BAD_REQUEST,
-    OFPET_FLOW_MOD_FAILED, OFPFMFC_UNKNOWN, OFPT_BARRIER_REPLY, OFPT_BARRIER_REQUEST,
-    OFPT_ERROR, pack_error, pack_flow_mod, pack_packet_in, pack_packet_out,
-    parse_error, parse_packet_in,
+    MULTIPART_HEADER, OFPBAC_BAD_OUT_PORT, OFPBRC_BAD_LEN, OFPBRC_BAD_MULTIPART,
+    OFPBRC_BAD_TYPE, OFPET_BAD_ACTION, OFPET_BAD_REQUEST, OFPET_FLOW_MOD_FAILED,
+    OFPFMFC_UNKNOWN, OFPMP_PORT_DESC, OFPT_BARRIER_REPLY, OFPT_BARRIER_REQUEST,
+    OFPT_MULTIPART_REPLY, OFPT_MULTIPART_REQUEST, PORT_DESC_ENTRY,
+    pack_flow_mod, pack_packet_in, pack_packet_out, parse_error, parse_packet_in,
 )
-from sdnsim.openflow.header import (
-    Message, OFPT_FEATURES_REPLY, OFPT_FEATURES_REQUEST, OFPT_FLOW_MOD, OFPT_HELLO,
-    OFPT_PACKET_IN, pack_message,
-)
-from sdnsim.openflow.reader import MessageReader
+from sdnsim.openflow.header import Message, OFPT_FLOW_MOD, OFPT_PACKET_IN, pack_message
 from sdnsim.topology.network import build_network
 
 H1, H2, H3 = "00:00:00:00:00:01", "00:00:00:00:00:02", "00:00:00:00:00:03"
-OFPT_MULTIPART_REQUEST = 18
 
 SPEC = {
     "hosts": [
@@ -44,92 +41,6 @@ SPEC = {
         {"a": "h3", "a_port": 1, "b": "s2", "b_port": 2},
     ],
 }
-
-
-class FakeController:
-    """Controller OpenFlow 1.3 tối giản: handshake, cài flow table-miss, rồi học MAC."""
-
-    def __init__(self, on_connect=None):
-        self.on_connect = on_connect        # hàm(send) chạy sau khi biết dpid của switch
-        self.tables = {}                    # dpid -> {mac: cổng}
-        self.ready = set()                  # dpid đã hoàn tất handshake
-        self.received = []                  # (dpid, Message) mọi thông điệp sau handshake
-        self.port = None
-        self._server = None
-        self._writers = []
-
-    async def start(self):
-        self._server = await asyncio.start_server(self._on_connection, "127.0.0.1", 0)
-        self.port = self._server.sockets[0].getsockname()[1]
-
-    async def stop(self):
-        self._server.close()
-        self.disconnect_all()
-        await asyncio.wait_for(self._server.wait_closed(), 3)
-
-    def disconnect_all(self):
-        for writer in self._writers:
-            writer.close()
-
-    async def _on_connection(self, reader, writer):
-        self._writers.append(writer)
-        parser, pending = MessageReader(), []
-
-        async def recv():
-            while not pending:
-                data = await reader.read(4096)
-                if not data:
-                    raise ConnectionError("switch đã đóng kết nối")
-                pending.extend(parser.feed(data))
-            return pending.pop(0)
-
-        def send(msg):
-            writer.write(pack_message(msg))
-
-        try:
-            send(Message(OFPT_HELLO, xid=1))
-            await recv()                                             # HELLO của switch
-            send(Message(OFPT_FEATURES_REQUEST, xid=2))
-            features = await recv()
-            assert features.type == OFPT_FEATURES_REPLY
-            dpid = struct.unpack("!Q", features.body[:8])[0]
-            send(pack_flow_mod({}, "CONTROLLER", priority=0))        # table-miss như simple_switch_13
-            self.ready.add(dpid)
-            if self.on_connect:
-                self.on_connect(send)
-            while True:
-                msg = await recv()
-                self.received.append((dpid, msg))
-                if msg.type == OFPT_PACKET_IN:
-                    self._learn(dpid, msg, send)
-        except ConnectionError:
-            pass
-        finally:
-            writer.close()
-
-    def _learn(self, dpid, msg, send):
-        in_port, pkt = parse_packet_in(msg)
-        table = self.tables.setdefault(dpid, {})
-        table[pkt.eth_src] = in_port
-        out = table.get(pkt.eth_dst, "FLOOD")
-        if out != "FLOOD":
-            send(pack_flow_mod(
-                {"in_port": in_port, "eth_dst": pkt.eth_dst, "eth_src": pkt.eth_src}, out))
-        send(pack_packet_out(out, pkt, in_port=in_port))
-
-    def errors(self):
-        return [(dpid, msg) for dpid, msg in self.received if msg.type == OFPT_ERROR]
-
-
-async def advance(sched, condition, step=0.005, timeout=5.0):
-    """Chạy giờ ảo từng bước nhỏ, xen kẽ nhường event loop cho TCP, tới khi điều kiện đúng."""
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    while not condition():
-        if loop.time() > deadline:
-            raise TimeoutError("điều kiện không đạt trong thời hạn")
-        sched.run(until=sched.now + step)
-        await asyncio.sleep(0.002)
 
 
 async def with_network(controller, body, spec=SPEC, down_latency=0.001):
@@ -200,6 +111,25 @@ def test_flows_come_from_controller_with_in_port_and_table_miss_is_ignored():
         assert all({"in_port", "eth_dst", "eth_src"} == set(f["match"]) for f in nodes[name].flows)
 
 
+def test_idle_timeout_set_by_controller_expires_flows_in_simulated_time():
+    async def body(sched, channel, nodes):
+        await ping(sched, nodes, 1)
+        timeouts = [f["idle_timeout"] for name in ("s1", "s2") for f in nodes[name].flows]
+        # Chạy giờ ảo (không có gói nào) cho tới khi mọi flow hết hạn.
+        await advance(sched, lambda: not nodes["s1"].flows and not nodes["s2"].flows, step=0.05)
+        before = channel.packet_in_count
+        await ping(sched, nodes, 2)
+        return timeouts, before, channel.packet_in_count, nodes
+
+    timeouts, before, after, nodes = asyncio.run(
+        with_network(FakeController(idle_timeout=1), body))
+
+    assert timeouts == [1.0, 1.0]                  # sau ping 1 mỗi switch có một flow (chiều trả lời), mang idle_timeout của FLOW_MOD
+    assert after > before                          # flow đã hết hạn nên ping 2 phải hỏi lại controller
+    assert len(nodes["h1"].rtts) == 2              # nhưng ping vẫn thành công
+    assert nodes["s1"].flows and all(f["idle_timeout"] == 1.0 for f in nodes["s1"].flows)   # flow được cài lại
+
+
 def test_each_switch_gets_its_own_dpid():
     controller = FakeController()
 
@@ -232,7 +162,15 @@ def _flow_mod_to_missing_port():
 
 
 def _unsupported_message():
-    return Message(OFPT_MULTIPART_REQUEST, xid=80, body=b"\x00" * 8)
+    return Message(7, xid=80)                          # GET_CONFIG_REQUEST: chưa hỗ trợ
+
+
+def _unsupported_multipart():
+    return Message(OFPT_MULTIPART_REQUEST, xid=82, body=struct.pack("!HH4x", 0, 0))   # DESC
+
+
+def _truncated_multipart():
+    return Message(OFPT_MULTIPART_REQUEST, xid=84, body=b"\x00")
 
 
 @pytest.mark.parametrize("make_bad, expected", [
@@ -240,6 +178,8 @@ def _unsupported_message():
     (_packet_out_to_missing_port, (OFPET_BAD_ACTION, OFPBAC_BAD_OUT_PORT)),
     (_flow_mod_to_missing_port, (OFPET_BAD_ACTION, OFPBAC_BAD_OUT_PORT)),
     (_unsupported_message, (OFPET_BAD_REQUEST, OFPBRC_BAD_TYPE)),
+    (_unsupported_multipart, (OFPET_BAD_REQUEST, OFPBRC_BAD_MULTIPART)),
+    (_truncated_multipart, (OFPET_BAD_REQUEST, OFPBRC_BAD_LEN)),
 ])
 def test_rejected_message_gets_error_and_session_survives(make_bad, expected):
     bad = make_bad()
@@ -259,6 +199,30 @@ def test_rejected_message_gets_error_and_session_survives(make_bad, expected):
         assert (err_type, code) == expected
         assert data == pack_message(bad)[:64]
     assert len(channel_errors) == 2
+
+
+def test_port_desc_request_is_answered_with_the_switch_ports():
+    request = Message(OFPT_MULTIPART_REQUEST, xid=83,
+                      body=MULTIPART_HEADER.pack(OFPMP_PORT_DESC, 0))
+    controller = FakeController(on_connect=lambda send: send(request))
+
+    async def body(sched, channel, nodes):
+        def replies():
+            return {dpid: m for dpid, m in controller.received if m.type == OFPT_MULTIPART_REPLY}
+        await advance(sched, lambda: len(replies()) == 2)
+        return replies()
+
+    replies = asyncio.run(with_network(controller, body))
+
+    def decode(msg):
+        mp_type, flags = MULTIPART_HEADER.unpack_from(msg.body)
+        entries = [PORT_DESC_ENTRY.unpack_from(msg.body, off)
+                   for off in range(MULTIPART_HEADER.size, len(msg.body), PORT_DESC_ENTRY.size)]
+        return mp_type, flags, [(e[0], e[2].rstrip(b"\x00").decode()) for e in entries]
+
+    assert replies[1].xid == replies[2].xid == 83
+    assert decode(replies[1]) == (OFPMP_PORT_DESC, 0, [(1, "s1-eth1"), (2, "s1-eth2"), (3, "s1-eth3")])
+    assert decode(replies[2]) == (OFPMP_PORT_DESC, 0, [(1, "s2-eth1"), (2, "s2-eth2")])
 
 
 def test_barrier_request_is_answered_after_earlier_messages():
