@@ -17,7 +17,7 @@ from typing import Callable, NamedTuple
 from sdnsim.core.packet import Packet
 
 from .frame import bytes_to_packet, packet_to_bytes
-from .header import OFPT_FLOW_MOD, OFPT_PACKET_IN, OFPT_PACKET_OUT, Message
+from .header import OFPT_FLOW_MOD, OFPT_PACKET_IN, OFPT_PACKET_OUT, Message, pack_message
 
 OFP_NO_BUFFER = 0xFFFFFFFF
 
@@ -43,6 +43,22 @@ OFPCML_NO_BUFFER = 0xFFFF
 
 OFPFC_ADD = 0
 OFPIT_APPLY_ACTIONS = 4
+
+# Thông điệp ngoài header.py
+OFPT_ERROR = 1
+OFPT_SET_CONFIG = 9
+OFPT_BARRIER_REQUEST = 20
+OFPT_BARRIER_REPLY = 21
+
+# Loại và mã lỗi của ERROR (đã đối chiếu với os-ken)
+OFPET_BAD_REQUEST = 1
+OFPET_BAD_ACTION = 2
+OFPET_FLOW_MOD_FAILED = 5
+OFPBRC_BAD_TYPE = 1             # thông điệp không được hỗ trợ
+OFPBAC_BAD_TYPE = 0             # action không được hỗ trợ
+OFPBAC_BAD_OUT_PORT = 4         # cổng đích không tồn tại
+OFPFMFC_UNKNOWN = 0             # FLOW_MOD bị từ chối, không rõ mã chi tiết
+ERROR_DATA_BYTES = 64           # số byte đầu của thông điệp gây lỗi được gửi kèm
 
 PACKET_IN_FIXED = struct.Struct("!IHBBQ")     # buffer_id, total_len, reason, table_id, cookie
 MATCH_HEADER = struct.Struct("!HH")           # type, length (length không tính phần đệm)
@@ -354,3 +370,21 @@ def parse_flow_mod(msg: Message) -> FlowSpec:
 
     return FlowSpec(match, _flow_port_from_wire(ports[0]), priority,
                     float(idle) if idle else None)
+
+
+# -------------------------------------------------------------------- ERROR
+
+def pack_error(err_type: int, code: int, request: Message) -> Message:
+    """ERROR trả lời `request`: cùng xid, kèm tối đa 64 byte đầu của thông điệp gây lỗi."""
+    data = pack_message(request)[:ERROR_DATA_BYTES]
+    return Message(OFPT_ERROR, xid=request.xid, body=struct.pack("!HH", err_type, code) + data)
+
+
+def parse_error(msg: Message) -> tuple[int, int, bytes]:
+    """Trả về (loại lỗi, mã lỗi, dữ liệu kèm theo)."""
+    if msg.type != OFPT_ERROR:
+        raise ValueError(f"không phải ERROR (type={msg.type})")
+    if len(msg.body) < 4:
+        raise ValueError("ERROR bị cắt ngắn")
+    err_type, code = struct.unpack_from("!HH", msg.body)
+    return err_type, code, msg.body[4:]

@@ -1,5 +1,6 @@
 import asyncio
 import struct
+from collections.abc import Callable
 
 from .header import (
     OFPT_ECHO_REPLY,
@@ -31,8 +32,14 @@ class OpenFlowSession:
     async def connect(self, host: str, port: int) -> None:
         self._reader, self._writer = await asyncio.open_connection(host, port)
 
-    async def send(self, msg: Message) -> None:
+    def send_nowait(self, msg: Message) -> None:
+        """Ghi vào bộ đệm gửi, không chờ. Dùng được từ mã đồng bộ (ví dụ trong sched.run)."""
+        if self._writer is None:
+            raise ConnectionError("phiên chưa kết nối hoặc đã đóng")
         self._writer.write(pack_message(msg))
+
+    async def send(self, msg: Message) -> None:
+        self.send_nowait(msg)
         await self._writer.drain()
 
     async def recv(self) -> Message:
@@ -50,22 +57,30 @@ class OpenFlowSession:
             raise ValueError("Thông điệp đầu tiên của controller phải là HELLO")
         return reply
 
-    async def serve(self) -> None:
-        """Trả lời FEATURES_REQUEST và ECHO_REQUEST cho tới khi controller đóng kết nối."""
+    async def serve(self, on_message: Callable[[Message], None] | None = None) -> None:
+        """Trả lời FEATURES_REQUEST và ECHO_REQUEST; chuyển mọi thông điệp khác cho
+        `on_message` (hàm đồng bộ). Trả về bình thường khi controller đóng kết nối.
+
+        Khung hỏng (MessageReader ném ValueError) được để nổi lên: người gọi phải đóng phiên.
+        """
         try:
             while True:
                 msg = await self.recv()
-                await self._handle(msg)
+                if not self._handle(msg) and on_message is not None:
+                    on_message(msg)
         except ConnectionError:
             return
 
-    async def _handle(self, msg: Message) -> None:
+    def _handle(self, msg: Message) -> bool:
+        """Xử lý thông điệp cấp phiên. Trả về True nếu đã xử lý."""
         if msg.type == OFPT_ECHO_REQUEST:
-            await self.send(Message(OFPT_ECHO_REPLY, xid=msg.xid, body=msg.body))
-        elif msg.type == OFPT_FEATURES_REQUEST:
+            self.send_nowait(Message(OFPT_ECHO_REPLY, xid=msg.xid, body=msg.body))
+            return True
+        if msg.type == OFPT_FEATURES_REQUEST:
             body = FEATURES_REPLY_BODY.pack(self.dpid, 0, 1, 0, 0, 0)
-            await self.send(Message(OFPT_FEATURES_REPLY, xid=msg.xid, body=body))
-        # Các loại khác (FLOW_MOD, PACKET_OUT...) sẽ xử lý ở bước 4e-4f.
+            self.send_nowait(Message(OFPT_FEATURES_REPLY, xid=msg.xid, body=body))
+            return True
+        return False
 
     async def close(self) -> None:
         if self._writer is None:

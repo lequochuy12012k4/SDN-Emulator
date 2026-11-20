@@ -20,12 +20,13 @@ from os_ken.ofproto import ofproto_v1_3_parser as parser                # noqa: 
 
 from sdnsim.core.packet import Packet                                   # noqa: E402
 from sdnsim.openflow.codec import (                                     # noqa: E402
-    pack_flow_mod, pack_packet_in, pack_packet_out,
+    OFPBRC_BAD_TYPE, OFPET_BAD_REQUEST, OFPET_FLOW_MOD_FAILED, OFPFMFC_UNKNOWN,
+    OFPT_BARRIER_REPLY, pack_error, pack_flow_mod, pack_packet_in, pack_packet_out,
     parse_flow_mod, parse_packet_out,
 )
 from sdnsim.openflow.frame import packet_to_bytes                       # noqa: E402
 from sdnsim.openflow.header import (                                    # noqa: E402
-    Message, OFPT_FEATURES_REPLY, pack_message,
+    Message, OFPT_FEATURES_REPLY, OFPT_FLOW_MOD, pack_message,
 )
 from sdnsim.openflow.reader import MessageReader                        # noqa: E402
 from sdnsim.openflow.session import FEATURES_REPLY_BODY                 # noqa: E402
@@ -74,6 +75,23 @@ def test_os_ken_reads_our_features_reply():
     m = os_ken_reads(Message(OFPT_FEATURES_REPLY, xid=3, body=body))
     assert type(m).__name__ == "OFPSwitchFeatures"
     assert (m.xid, m.datapath_id, m.n_tables) == (3, 0xABC, 1)
+
+
+def test_os_ken_reads_our_error_messages():
+    request = Message(OFPT_FLOW_MOD, xid=77, body=b"\x00" * 100)
+    m = os_ken_reads(pack_error(OFPET_FLOW_MOD_FAILED, OFPFMFC_UNKNOWN, request))
+    assert type(m).__name__ == "OFPErrorMsg"
+    assert (m.xid, m.type, m.code) == (77, ofp.OFPET_FLOW_MOD_FAILED, ofp.OFPFMFC_UNKNOWN)
+    assert bytes(m.data) == pack_message(request)[:64]
+
+    m = os_ken_reads(pack_error(OFPET_BAD_REQUEST, OFPBRC_BAD_TYPE, request))
+    assert (m.type, m.code) == (ofp.OFPET_BAD_REQUEST, ofp.OFPBRC_BAD_TYPE)
+
+
+def test_os_ken_reads_our_barrier_reply():
+    m = os_ken_reads(Message(OFPT_BARRIER_REPLY, xid=80))
+    assert type(m).__name__ == "OFPBarrierReply"
+    assert m.xid == 80
 
 
 # ------------------------------- os-ken ghi, ta đọc (controller -> switch)
