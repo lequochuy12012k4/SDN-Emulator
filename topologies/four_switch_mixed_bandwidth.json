@@ -1,0 +1,53 @@
+{
+  "hosts": [
+    {"name": "h1", "mac": "00:00:00:00:00:01", "ip": "10.0.0.1"},
+    {"name": "h2", "mac": "00:00:00:00:00:02", "ip": "10.0.0.2"},
+    {"name": "h3", "mac": "00:00:00:00:00:03", "ip": "10.0.0.3"},
+    {"name": "h4", "mac": "00:00:00:00:00:04", "ip": "10.0.0.4"},
+    {"name": "h5", "mac": "00:00:00:00:00:05", "ip": "10.0.0.5"}
+  ],
+  "switches": [
+    {"name": "s1"},
+    {"name": "s2"},
+    {"name": "s3"},
+    {"name": "s4"}
+  ],
+  "links": [
+    {
+      "a": "h1", "a_port": 1, "b": "s2", "b_port": 1,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h2", "a_port": 1, "b": "s2", "b_port": 2,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s2", "a_port": 3, "b": "s1", "b_port": 1,
+      "delay": 0.003, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h3", "a_port": 1, "b": "s1", "b_port": 2,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s1", "a_port": 3, "b": "s3", "b_port": 1,
+      "delay": 0.005, "bandwidth": "10Mbps", "queue_limit": 20,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h4", "a_port": 1, "b": "s3", "b_port": 2,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s3", "a_port": 3, "b": "s4", "b_port": 1,
+      "delay": 0.008, "bandwidth": "1Mbps", "queue_limit": 10,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h5", "a_port": 1, "b": "s4", "b_port": 2,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    }
+  ],
+  "seed": 42
+}

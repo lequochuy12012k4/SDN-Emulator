@@ -30,8 +30,9 @@ def create_app(topology_path, step=0.05, speed=1.0, autorun=True, push_interval=
     """Dựng ứng dụng web điều khiển và quan sát một mạng mô phỏng.
 
     openflow: None để dùng controller học MAC nội bộ, hoặc (host, port) để mỗi switch
-        kết nối tới một controller OpenFlow 1.3 bên ngoài. Nếu controller chưa sẵn sàng,
-        ứng dụng thử lại mỗi `retry_interval` giây; trong lúc đó PACKET_IN bị bỏ.
+        kết nối tới một controller OpenFlow 1.3 bên ngoài. Nếu controller chưa sẵn sàng
+        hoặc phiên bị ngắt, ứng dụng thử kết nối lại mỗi `retry_interval` giây; trong
+        lúc đó PACKET_IN bị bỏ.
     """
     spec = json.loads(Path(topology_path).read_text(encoding="utf-8"))
     sched = Scheduler()
@@ -53,14 +54,16 @@ def create_app(topology_path, step=0.05, speed=1.0, autorun=True, push_interval=
 
     async def connect_loop():
         while True:
+            if all(ch.connected(name) for name in ch.switches):
+                await asyncio.sleep(0.1)
+                continue
             try:
                 await asyncio.wait_for(ch.start(), timeout=5)
                 log.info("đã kết nối controller OpenFlow %s:%s", *openflow)
-                return
-            except (OSError, ValueError) as exc:    # gồm cả TimeoutError
+            except (OSError, ValueError, asyncio.TimeoutError) as exc:
                 log.warning("chưa kết nối được controller (%s), thử lại sau %ss",
                             exc or type(exc).__name__, retry_interval)
-                await asyncio.sleep(retry_interval)
+            await asyncio.sleep(retry_interval)
 
     @asynccontextmanager
     async def lifespan(app):

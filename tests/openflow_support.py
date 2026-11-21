@@ -21,6 +21,7 @@ class FakeController:
         self.on_connect = on_connect        # hàm(send) chạy sau khi biết dpid của switch
         self.tables = {}                    # dpid -> {mac: cổng}
         self.ready = set()                  # dpid đã hoàn tất handshake
+        self.senders = {}                   # dpid -> hàm gửi, để test chủ động gửi yêu cầu
         self.received = []                  # (dpid, Message) mọi thông điệp sau handshake
         self.port = None
         self._server = None
@@ -62,6 +63,7 @@ class FakeController:
             assert features.type == OFPT_FEATURES_REPLY
             dpid = struct.unpack("!Q", features.body[:8])[0]
             send(pack_flow_mod({}, "CONTROLLER", priority=0))        # table-miss như simple_switch_13
+            self.senders[dpid] = send
             self.ready.add(dpid)
             if self.on_connect:
                 self.on_connect(send)

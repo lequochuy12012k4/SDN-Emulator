@@ -35,7 +35,8 @@ def test_without_bandwidth_only_delay_applies_and_exactly():
     sched.run()
     assert b.got == [0.002]                      # đúng từng bit, không có sai số làm tròn
     assert link.direction_stats(a) == {"sent_packets": 1, "sent_bytes": 50,
-                                       "dropped_loss": 0, "dropped_queue": 0, "queued": 0}
+                                       "dropped_loss": 0, "dropped_queue": 0,
+                                       "dropped_error": 0, "queued": 0}
 
 
 def test_bandwidth_adds_serialization_time():
@@ -127,6 +128,8 @@ def test_different_seeds_give_different_loss_patterns():
 @pytest.mark.parametrize("kwargs", [
     {"delay": -1}, {"delay": "1"}, {"bandwidth": 0}, {"bandwidth": -5}, {"bandwidth": "10Mbps"},
     {"loss": -0.1}, {"loss": 1.5}, {"loss": "0.5"},
+    {"error_rate": -0.1}, {"error_rate": 1.5}, {"error_rate": "0.5"},
+    {"error_rate": True},
     {"queue_limit": 3},                                      # cần bandwidth
     {"bandwidth": 1000, "queue_limit": 0}, {"bandwidth": 1000, "queue_limit": 2.5},
 ])

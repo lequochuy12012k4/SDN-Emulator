@@ -85,3 +85,43 @@ def test_connection_is_retried_until_the_controller_appears():
     before = asyncio.run(scenario())
     assert before["mode"] == "openflow"
     assert not any(before["switches"].values())   # lúc đầu chưa switch nào kết nối được
+
+
+def test_switches_reconnect_after_the_controller_restarts():
+    async def scenario():
+        controller = FakeController()
+        await controller.start()
+        port = controller.port
+        restarted_controller = FakeController()
+        app = create_app(TOPOLOGY, step=0.01, speed=20.0,
+                         openflow=("127.0.0.1", port), retry_interval=0.05)
+        controller_running = True
+        restarted_running = False
+        try:
+            async with app.router.lifespan_context(app):
+                transport = httpx.ASGITransport(app=app)
+                async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                    await poll(client, all_connected)
+                    await controller.stop()
+                    controller_running = False
+                    await poll(
+                        client,
+                        lambda s: bool(s["controller"]["switches"])
+                        and not any(s["controller"]["switches"].values()),
+                    )
+
+                    await restarted_controller.start(port)
+                    restarted_running = True
+                    await poll(client, all_connected)
+                    response = await client.post("/ping", json={"src": "h1", "dst": "h3"})
+                    assert response.status_code == 200
+                    return await poll(client, lambda s: len(s["hosts"]["h1"]["rtts"]) == 1)
+        finally:
+            if controller_running:
+                await controller.stop()
+            if restarted_running:
+                await restarted_controller.stop()
+
+    snapshot = asyncio.run(scenario())
+    assert all(snapshot["controller"]["switches"].values())
+    assert snapshot["packet_in_total"] >= 2

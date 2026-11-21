@@ -53,6 +53,7 @@ def build_network(
                       "delay": float (giây, mặc định 0.001),
                       "bandwidth": số bit/giây hoặc chuỗi như "10Mbps" (mặc định không giới hạn),
                       "loss": xác suất mất gói 0..1 (mặc định 0),
+                      "error_rate": xác suất frame lỗi CRC 0..1 (mặc định 0),
                       "queue_limit": số gói tối đa trong hàng đợi mỗi chiều (cần bandwidth)}, ...]
       - "seed": số hoặc chuỗi làm hạt giống cho việc mất gói ngẫu nhiên (mặc định 0).
           Mỗi link có một nguồn ngẫu nhiên riêng, nên cùng seed thì kết quả luôn giống nhau.
@@ -111,7 +112,8 @@ def build_network(
              bandwidth=parse_bandwidth(lnk.get("bandwidth")),
              loss=lnk.get("loss", 0.0),
              queue_limit=lnk.get("queue_limit"),
-             rng=random.Random(f"{seed}:{index}"))
+             rng=random.Random(f"{seed}:{index}"),
+             error_rate=lnk.get("error_rate", 0.0))
 
     return sched, ch, nodes
 

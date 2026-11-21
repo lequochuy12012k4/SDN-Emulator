@@ -21,16 +21,32 @@ from os_ken.ofproto import ofproto_v1_3_parser as parser                # noqa: 
 from sdnsim.core.packet import Packet                                   # noqa: E402
 from sdnsim.openflow.codec import (                                     # noqa: E402
     OFPBRC_BAD_TYPE, OFPET_BAD_REQUEST, OFPET_FLOW_MOD_FAILED, OFPFMFC_UNKNOWN,
-    OFPMP_PORT_DESC, OFPT_BARRIER_REPLY, PortDesc, pack_error, pack_flow_mod,
-    pack_packet_in, pack_packet_out, pack_port_desc_reply, parse_flow_mod,
-    parse_multipart_request, parse_packet_out,
+    OFPMP_AGGREGATE, OFPMP_DESC, OFPMP_FLOW, OFPMP_GROUP, OFPMP_METER, OFPMP_PORT_DESC,
+    OFPMP_PORT_STATS, OFPMP_TABLE, OFPMP_GROUP_DESC, OFPMP_METER_CONFIG,
+    OFPT_BARRIER_REPLY, AggregateStats, FlowStats, BucketStats, FlowSpec, FlowStatsRequest,
+    GroupBucket, GroupDesc, GroupModSpec, GroupStats,
+    MeterConfig, MeterModSpec, MeterStats, PortDesc, PortStats, TableStats,
+    OFPPF_OTHER,
+    OFPGC_ADD, OFPGT_ALL, OFPMF_BURST, OFPMF_KBPS, OFPMF_STATS, OFPMC_ADD,
+    pack_group_mod, pack_meter_mod, pack_aggregate_stats_reply,
+    pack_aggregate_stats_request, pack_desc_stats_reply, pack_error, pack_flow_mod, pack_flow_stats_reply,
+    pack_packet_in, pack_packet_out, pack_port_desc_reply, pack_port_stats_reply,
+    pack_group_stats_reply, pack_meter_stats_reply, pack_table_stats_reply,
+    pack_group_desc_reply, pack_meter_config_reply, pack_group_desc_request,
+    pack_meter_config_request, parse_group_mod, parse_meter_mod,
+    parse_flow_mod, parse_flow_mod_cookie, parse_flow_stats_request,
+    parse_group_desc_request, parse_group_stats_request, parse_meter_stats_request,
+    parse_multipart_request,
+    parse_packet_out, parse_port_stats_request,
 )
 from sdnsim.openflow.frame import packet_to_bytes                       # noqa: E402
 from sdnsim.openflow.header import (                                    # noqa: E402
-    Message, OFPT_FEATURES_REPLY, OFPT_FLOW_MOD, pack_message,
+    Message, OFPT_FEATURES_REQUEST, OFPT_FLOW_MOD, pack_message,
 )
 from sdnsim.openflow.reader import MessageReader                        # noqa: E402
-from sdnsim.openflow.session import FEATURES_REPLY_BODY                 # noqa: E402
+from sdnsim.openflow.session import (                                    # noqa: E402
+    OpenFlowSession, SUPPORTED_CAPABILITIES,
+)
 
 H1, H3 = "00:00:00:00:00:01", "00:00:00:00:00:03"
 DP = ofproto_protocol.ProtocolDesc(version=ofp.OFP_VERSION)
@@ -72,10 +88,18 @@ def test_os_ken_reads_our_packet_in():
 
 
 def test_os_ken_reads_our_features_reply():
-    body = FEATURES_REPLY_BODY.pack(0xABC, 0, 1, 0, 0, 0)
-    m = os_ken_reads(Message(OFPT_FEATURES_REPLY, xid=3, body=body))
+    class Writer:
+        def write(self, data):
+            self.data = data
+
+    session = OpenFlowSession(0xABC)
+    session._writer = Writer()
+    assert session._handle(Message(OFPT_FEATURES_REQUEST, xid=3))
+    [reply] = MessageReader().feed(session._writer.data)
+    m = os_ken_reads(reply)
     assert type(m).__name__ == "OFPSwitchFeatures"
     assert (m.xid, m.datapath_id, m.n_tables) == (3, 0xABC, 1)
+    assert m.capabilities == SUPPORTED_CAPABILITIES
 
 
 def test_os_ken_reads_our_error_messages():
@@ -90,14 +114,240 @@ def test_os_ken_reads_our_error_messages():
 
 
 def test_os_ken_reads_our_port_desc_reply():
-    ports = [PortDesc(1, "02:00:00:00:01:01", "s1-eth1"), PortDesc(3, "02:00:00:00:01:03", "s1-eth3")]
+    ports = [
+        PortDesc(1, "02:00:00:00:01:01", "s1-eth1", 1_000_000_000),
+        PortDesc(2, "02:00:00:00:01:02", "s1-eth2", 100_000_000),
+        PortDesc(3, "02:00:00:00:01:03", "s1-eth3"),
+    ]
     m = os_ken_reads(pack_port_desc_reply(ports, xid=83))
     assert type(m).__name__ == "OFPPortDescStatsReply"
     assert (m.xid, m.type, m.flags) == (83, ofp.OFPMP_PORT_DESC, 0)
-    assert [p.port_no for p in m.body] == [1, 3]
-    assert [p.hw_addr for p in m.body] == ["02:00:00:00:01:01", "02:00:00:00:01:03"]
-    assert [p.name.rstrip(b"\x00") for p in m.body] == [b"s1-eth1", b"s1-eth3"]
-    assert all(p.curr == ofp.OFPPF_1GB_FD and p.curr_speed == 1_000_000 for p in m.body)
+    assert [p.port_no for p in m.body] == [1, 2, 3]
+    assert [p.hw_addr for p in m.body] == [
+        "02:00:00:00:01:01", "02:00:00:00:01:02", "02:00:00:00:01:03"]
+    assert [p.name.rstrip(b"\x00") for p in m.body] == [
+        b"s1-eth1", b"s1-eth2", b"s1-eth3"]
+    assert [p.curr for p in m.body] == [
+        ofp.OFPPF_1GB_FD, ofp.OFPPF_100MB_FD, 0]
+    assert [p.supported for p in m.body] == [p.curr for p in m.body]
+    assert [p.curr_speed for p in m.body] == [1_000_000, 100_000, 0]
+    assert [p.max_speed for p in m.body] == [1_000_000, 100_000, 0]
+
+
+def test_os_ken_reads_custom_port_speed_as_other():
+    msg = pack_port_desc_reply([
+        PortDesc(1, "02:00:00:00:01:01", "s1-eth1", 100_000),
+    ], xid=84)
+    [port] = os_ken_reads(msg).body
+    assert (port.curr, port.supported, port.curr_speed, port.max_speed) == (
+        OFPPF_OTHER, OFPPF_OTHER, 100, 100)
+
+
+def test_os_ken_reads_our_port_stats_reply():
+    stats = [PortStats(1, 10, 20, 500, 1000, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10), PortStats(3, tx_dropped=7)]
+    [msg] = pack_port_stats_reply(stats, xid=90)
+    m = os_ken_reads(msg)
+    assert type(m).__name__ == "OFPPortStatsReply"
+    assert (m.xid, m.type, m.flags) == (90, ofp.OFPMP_PORT_STATS, 0)
+    assert [tuple(getattr(p, f) for f in (
+        "port_no", "rx_packets", "tx_packets", "rx_bytes", "tx_bytes", "rx_dropped", "tx_dropped",
+        "rx_errors", "tx_errors", "rx_frame_err", "rx_over_err", "rx_crc_err", "collisions",
+        "duration_sec", "duration_nsec")) for p in m.body] == [tuple(s) for s in stats]
+
+
+def test_os_ken_reads_our_flow_stats_reply():
+    flows = [FlowStats({"in_port": 1, "eth_dst": H3, "eth_src": H1}, 3, 1, 5.0, 4, 200, 2, 500, 0xA1),
+             FlowStats({}, "CONTROLLER", 0, None, 0, 0),
+             FlowStats({"eth_dst": H3}, None, 10, None, 3, 150,
+                       group_id=7, meter_id=8)]
+    [msg] = pack_flow_stats_reply(flows, xid=91)
+    m = os_ken_reads(msg)
+    assert type(m).__name__ == "OFPFlowStatsReply"
+    first, second, third = m.body
+    assert (first.priority, first.idle_timeout, first.hard_timeout, first.table_id) == (1, 5, 0, 0)
+    assert (first.packet_count, first.byte_count, first.duration_sec, first.duration_nsec) == (4, 200, 2, 500)
+    assert first.cookie == 0xA1
+    assert dict(first.match.items()) == {"in_port": 1, "eth_dst": H3, "eth_src": H1}
+    [instruction] = first.instructions
+    assert [(a.type, a.port) for a in instruction.actions] == [(ofp.OFPAT_OUTPUT, 3)]
+    assert dict(second.match.items()) == {}
+    assert second.instructions[0].actions[0].port == ofp.OFPP_CONTROLLER
+    assert (third.instructions[0].meter_id, third.instructions[1].actions[0].group_id) == (8, 7)
+
+
+def test_we_read_os_ken_stats_requests():
+    request = we_read(parser.OFPPortStatsRequest(datapath=DP, flags=0, port_no=ofp.OFPP_ANY))
+    mp_type, _flags, body = parse_multipart_request(request)
+    assert (mp_type, parse_port_stats_request(body)) == (ofp.OFPMP_PORT_STATS, ofp.OFPP_ANY)
+
+    request = we_read(parser.OFPFlowStatsRequest(
+        datapath=DP, flags=0, table_id=ofp.OFPTT_ALL, out_port=3, out_group=ofp.OFPG_ANY,
+        cookie=0xA0, cookie_mask=0xF0, match=parser.OFPMatch(eth_dst=H3)))
+    mp_type, _flags, body = parse_multipart_request(request)
+    assert mp_type == ofp.OFPMP_FLOW
+    assert parse_flow_stats_request(body) == FlowStatsRequest(
+        ofp.OFPTT_ALL, 3, {"eth_dst": H3}, 0xA0, 0xF0)
+
+    request = we_read(parser.OFPFlowStatsRequest(datapath=DP))          # mặc định của os-ken: mọi flow
+    _mp, _flags, body = parse_multipart_request(request)
+    assert parse_flow_stats_request(body).match == {} and parse_flow_stats_request(body).table_id == ofp.OFPTT_ALL
+
+
+def test_os_ken_reads_our_added_multipart_replies():
+    [desc] = pack_desc_stats_reply("s1", 1, xid=110)
+    msg = os_ken_reads(desc)
+    assert type(msg).__name__ == "OFPDescStatsReply"
+    assert msg.xid == 110 and msg.body.dp_desc.rstrip(b"\x00") == b"s1 (dpid=1)"
+
+    [table] = pack_table_stats_reply([TableStats(0, 2, 10, 8)], xid=111)
+    msg = os_ken_reads(table)
+    assert type(msg).__name__ == "OFPTableStatsReply"
+    assert [(s.table_id, s.active_count, s.lookup_count, s.matched_count) for s in msg.body] == [
+        (0, 2, 10, 8)]
+
+    [aggregate] = pack_aggregate_stats_reply(AggregateStats(8, 400, 2), xid=112)
+    msg = os_ken_reads(aggregate)
+    assert type(msg).__name__ == "OFPAggregateStatsReply"
+    assert (msg.body.packet_count, msg.body.byte_count, msg.body.flow_count) == (8, 400, 2)
+
+    [group] = pack_group_stats_reply([
+        GroupStats(7, 1, 2, 100, 3, 4, [BucketStats(1, 50), BucketStats(1, 50)])
+    ], xid=113)
+    msg = os_ken_reads(group)
+    assert type(msg).__name__ == "OFPGroupStatsReply"
+    [group_stats] = msg.body
+    assert (group_stats.group_id, group_stats.ref_count, group_stats.packet_count,
+            group_stats.byte_count) == (7, 1, 2, 100)
+    assert [(b.packet_count, b.byte_count) for b in group_stats.bucket_stats] == [
+        (1, 50), (1, 50)]
+
+    [meter] = pack_meter_stats_reply([
+        MeterStats(8, 1, 3, 150, 2, 3, [BucketStats(1, 50)])
+    ], xid=114)
+    msg = os_ken_reads(meter)
+    assert type(msg).__name__ == "OFPMeterStatsReply"
+    [meter_stats] = msg.body
+    assert (meter_stats.meter_id, meter_stats.flow_count, meter_stats.packet_in_count,
+            meter_stats.byte_in_count) == (8, 1, 3, 150)
+    assert [(b.packet_band_count, b.byte_band_count) for b in meter_stats.band_stats] == [(1, 50)]
+
+
+def test_os_ken_reads_our_group_desc_and_meter_config_replies():
+    [group] = pack_group_desc_reply([
+        GroupDesc(OFPGT_ALL, 7, [GroupBucket(1), GroupBucket(2)])
+    ], xid=115)
+    msg = os_ken_reads(group)
+    assert type(msg).__name__ == "OFPGroupDescStatsReply"
+    [group_desc] = msg.body
+    assert (group_desc.type, group_desc.group_id) == (OFPGT_ALL, 7)
+    assert [bucket.actions[0].port for bucket in group_desc.buckets] == [1, 2]
+
+    [meter] = pack_meter_config_reply([MeterConfig(
+        OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8, 100, 10)], xid=116)
+    msg = os_ken_reads(meter)
+    assert type(msg).__name__ == "OFPMeterConfigStatsReply"
+    [config] = msg.body
+    assert (config.flags, config.meter_id) == (OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8)
+    assert (config.bands[0].rate, config.bands[0].burst_size) == (100, 10)
+
+
+def test_we_read_os_ken_group_and_meter_mods():
+    bucket = parser.OFPBucket(actions=[parser.OFPActionOutput(1)])
+    os_group = parser.OFPGroupMod(DP, OFPGC_ADD, OFPGT_ALL, 7, [bucket])
+    assert parse_group_mod(we_read(os_group)) == GroupModSpec(
+        OFPGC_ADD, OFPGT_ALL, 7, [GroupBucket(1)])
+
+    os_meter = parser.OFPMeterMod(
+        DP, OFPMC_ADD, OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8,
+        [parser.OFPMeterBandDrop(100, 10)])
+    assert parse_meter_mod(we_read(os_meter)) == MeterModSpec(
+        OFPMC_ADD, OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8, 100, 10)
+    assert parse_meter_mod(pack_meter_mod(
+        OFPMC_ADD, OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8, 100, 10)) == MeterModSpec(
+            OFPMC_ADD, OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8, 100, 10)
+
+
+def test_we_read_os_ken_flow_mod_with_group_and_meter():
+    instructions = [
+        parser.OFPInstructionMeter(8),
+        parser.OFPInstructionActions(
+            ofp.OFPIT_APPLY_ACTIONS, [parser.OFPActionGroup(7)]),
+    ]
+    msg = we_read(parser.OFPFlowMod(
+        datapath=DP, match=parser.OFPMatch(eth_dst=H3), instructions=instructions,
+        priority=10))
+    assert parse_flow_mod(msg) == FlowSpec({"eth_dst": H3}, None, 10, None, 7, 8)
+
+    ours = pack_flow_mod({"eth_dst": H3}, None, priority=10, group_id=7, meter_id=8)
+    os_flow = parser.OFPFlowMod(
+        datapath=DP, match=parser.OFPMatch(eth_dst=H3), instructions=instructions,
+        priority=10, out_port=ofp.OFPP_ANY, out_group=ofp.OFPG_ANY)
+    assert ours.body == we_read(os_flow).body
+
+
+def test_os_ken_reads_our_group_and_meter_mods():
+    group = pack_group_mod(OFPGC_ADD, OFPGT_ALL, 7, [
+        GroupBucket(1), GroupBucket(2),
+    ])
+    os_group = parser.OFPGroupMod(
+        DP, OFPGC_ADD, OFPGT_ALL, 7, [
+            parser.OFPBucket(actions=[parser.OFPActionOutput(1)]),
+            parser.OFPBucket(actions=[parser.OFPActionOutput(2)]),
+        ])
+    assert group.body == we_read(os_group).body
+
+    meter = pack_meter_mod(
+        OFPMC_ADD, OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8, 100, 10)
+    os_meter = parser.OFPMeterMod(
+        DP, OFPMC_ADD, OFPMF_KBPS | OFPMF_BURST | OFPMF_STATS, 8,
+        [parser.OFPMeterBandDrop(100, 10)])
+    assert meter.body == we_read(os_meter).body
+
+
+def test_we_read_os_ken_added_multipart_requests():
+    requests = [
+        (parser.OFPDescStatsRequest(DP), OFPMP_DESC, b""),
+        (parser.OFPTableStatsRequest(DP), OFPMP_TABLE, b""),
+        (parser.OFPAggregateStatsRequest(
+            DP, 0, ofp.OFPTT_ALL, ofp.OFPP_ANY, ofp.OFPG_ANY, 0xA0, 0xF0,
+            parser.OFPMatch(eth_dst=H3)), OFPMP_AGGREGATE, None),
+        (parser.OFPGroupStatsRequest(DP, group_id=ofp.OFPG_ALL), OFPMP_GROUP, None),
+        (parser.OFPGroupDescStatsRequest(DP), OFPMP_GROUP_DESC, b""),
+        (parser.OFPMeterStatsRequest(DP, meter_id=ofp.OFPM_ALL), OFPMP_METER, None),
+        (parser.OFPMeterConfigStatsRequest(DP, meter_id=ofp.OFPM_ALL),
+         OFPMP_METER_CONFIG, None),
+    ]
+    for osken_request, expected_type, expected_body in requests:
+        msg = we_read(osken_request)
+        mp_type, _flags, body = parse_multipart_request(msg)
+        assert mp_type == expected_type
+        if expected_body is not None:
+            assert body == expected_body
+        elif expected_type == OFPMP_AGGREGATE:
+            assert parse_flow_stats_request(body) == FlowStatsRequest(
+                ofp.OFPTT_ALL, None, {"eth_dst": H3}, 0xA0, 0xF0)
+        elif expected_type == OFPMP_GROUP:
+            assert parse_group_stats_request(body) == ofp.OFPG_ALL
+        elif expected_type == OFPMP_GROUP_DESC:
+            assert parse_group_desc_request(body) is None
+        elif expected_type == OFPMP_METER:
+            assert parse_meter_stats_request(body) == ofp.OFPM_ALL
+        elif expected_type == OFPMP_METER_CONFIG:
+            assert parse_meter_stats_request(body) == ofp.OFPM_ALL
+
+    ours = pack_group_desc_request(xid=6)
+    theirs = we_read(parser.OFPGroupDescStatsRequest(DP))
+    assert ours.body == theirs.body
+    ours = pack_meter_config_request(xid=6)
+    theirs = we_read(parser.OFPMeterConfigStatsRequest(DP, meter_id=ofp.OFPM_ALL))
+    assert ours.body == theirs.body
+
+    ours = pack_aggregate_stats_request(
+        FlowStatsRequest(ofp.OFPTT_ALL, None, {"eth_dst": H3}, 0xA0, 0xF0))
+    theirs = we_read(parser.OFPAggregateStatsRequest(
+        DP, 0, ofp.OFPTT_ALL, ofp.OFPP_ANY, ofp.OFPG_ANY, 0xA0, 0xF0,
+        parser.OFPMatch(eth_dst=H3)))
+    assert ours.body == theirs.body
 
 
 def test_we_read_os_ken_port_desc_request():
@@ -127,7 +377,7 @@ def test_os_ken_reads_our_barrier_reply():
 def test_we_read_os_ken_flow_mod(match, actions, priority, idle, expected):
     msg = we_read(parser.OFPFlowMod(datapath=DP, match=match, instructions=apply(actions),
                                     priority=priority, idle_timeout=idle))
-    assert parse_flow_mod(msg) == expected
+    assert parse_flow_mod(msg) == FlowSpec(*expected)
 
 
 def test_we_read_os_ken_flow_mod_with_in_port():
@@ -135,7 +385,8 @@ def test_we_read_os_ken_flow_mod_with_in_port():
     msg = we_read(parser.OFPFlowMod(
         datapath=DP, match=parser.OFPMatch(in_port=1, eth_dst=H3, eth_src=H1),
         instructions=apply([parser.OFPActionOutput(3)]), priority=1))
-    assert parse_flow_mod(msg) == ({"in_port": 1, "eth_dst": H3, "eth_src": H1}, 3, 1, None)
+    assert parse_flow_mod(msg) == FlowSpec(
+        {"in_port": 1, "eth_dst": H3, "eth_src": H1}, 3, 1, None)
 
 
 def test_we_read_os_ken_packet_out():
@@ -177,3 +428,8 @@ def test_os_ken_and_we_agree_on_flow_mod_bytes_with_in_port():
         instructions=apply([parser.OFPActionOutput(3)]), priority=1,
         out_port=ofp.OFPP_ANY, out_group=ofp.OFPG_ANY))
     assert ours.body == theirs.body
+
+
+def test_flow_mod_cookie_roundtrip():
+    msg = pack_flow_mod({"eth_dst": H3}, 3, cookie=0xA1)
+    assert parse_flow_mod_cookie(msg) == 0xA1

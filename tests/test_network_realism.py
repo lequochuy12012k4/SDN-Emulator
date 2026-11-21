@@ -1,4 +1,4 @@
-"""Băng thông, hàng đợi, mất gói và ARP chịu mất gói, đo qua cả mạng chứ không chỉ một link."""
+"""Băng thông, hàng đợi, loss/frame error và ARP, đo qua cả mạng."""
 
 import itertools
 import json
@@ -6,6 +6,7 @@ import json
 import pytest
 
 from sdnsim.metrics.collector import Metrics
+from sdnsim.core.packet import Packet
 from sdnsim.topology.network import build_network, parse_bandwidth
 
 HOSTS = [
@@ -58,15 +59,21 @@ def test_parse_bandwidth_rejects_bad_values(bad):
 
 
 def test_link_parameters_from_spec_reach_the_link():
-    _, _, nodes = build_network(spec(delay=0.002, bandwidth="10Mbps", loss=0.1, queue_limit=5))
+    _, _, nodes = build_network(spec(
+        delay=0.002, bandwidth="10Mbps", loss=0.1, error_rate=0.2, queue_limit=5))
     link = nodes["h1"].ports[1]
-    assert (link.delay, link.bandwidth, link.loss, link.queue_limit) == (0.002, 1e7, 0.1, 5)
+    assert (link.delay, link.bandwidth, link.loss, link.error_rate, link.queue_limit) == (
+        0.002, 1e7, 0.1, 0.2, 5)
     other = nodes["h2"].ports[1]                    # link không khai báo gì: mặc định cũ
-    assert (other.delay, other.bandwidth, other.loss, other.queue_limit) == (0.001, None, 0.0, None)
+    assert (other.delay, other.bandwidth, other.loss, other.error_rate, other.queue_limit) == (
+        0.001, None, 0.0, 0.0, None)
 
 
 def test_invalid_link_parameter_in_spec_is_rejected():
-    for bad in ({"loss": 2}, {"bandwidth": "fast"}, {"queue_limit": 3}, {"delay": -1}):
+    for bad in (
+        {"loss": 2}, {"error_rate": 2}, {"bandwidth": "fast"},
+        {"queue_limit": 3}, {"delay": -1},
+    ):
         with pytest.raises(ValueError):
             build_network(spec(**bad))
 
@@ -121,6 +128,19 @@ def test_lost_arp_is_retried_and_the_ping_still_completes():
     assert h1_link_stats(sched, ch, nodes)["a_to_b"]["dropped_loss"] == 1   # chỉ ARP request đầu bị mất
 
 
+def test_link_error_is_counted_on_the_receiving_switch_port():
+    sched, _, nodes = build_network(spec(error_rate=1.0))
+    nodes["h1"].send(Packet("00:00:00:00:00:01", "ff:ff:ff:ff:ff:ff", "arp_req"))
+    assert nodes["s1"].port_stats[1]["rx_errors"] == 0
+    sched.run()
+
+    stats = nodes["s1"].port_stats[1]
+    link_stats = nodes["h1"].ports[1].direction_stats(nodes["h1"])
+    assert (stats["rx_packets"], stats["rx_dropped"], stats["rx_errors"], stats["rx_crc_err"]) == (
+        0, 1, 1, 1)
+    assert link_stats["dropped_error"] == 1
+
+
 def test_ping_is_abandoned_after_three_lost_arp_requests():
     sched, ch, nodes = build_network(spec(loss=1.0))
     h1 = nodes["h1"]
@@ -148,11 +168,13 @@ def test_pings_waiting_for_one_arp_share_a_single_request():
 
 
 def test_snapshot_exposes_link_settings_and_counters_as_json():
-    sched, ch, nodes = build_network(spec(bandwidth="1Mbps", loss=0.0, queue_limit=4))
+    sched, ch, nodes = build_network(
+        spec(bandwidth="1Mbps", loss=0.0, error_rate=0.1, queue_limit=4))
     nodes["h1"].ping_ip("10.0.0.2", 1)
     sched.run()
     snapshot = json.loads(json.dumps(Metrics(sched, ch, nodes).snapshot()))
     link = next(l for l in snapshot["links"] if l["a"] == "h1")
-    assert (link["bandwidth"], link["loss"], link["queue_limit"]) == (1e6, 0.0, 4)
+    assert (link["bandwidth"], link["loss"], link["error_rate"], link["queue_limit"]) == (
+        1e6, 0.0, 0.1, 4)
     assert link["a_to_b"]["sent_packets"] >= 1 and link["b_to_a"]["sent_packets"] >= 1
     assert snapshot["hosts"]["h1"]["arp_failures"] == 0

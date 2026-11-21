@@ -6,6 +6,7 @@ giữa OpenFlowChannel, OpenFlowSession và codec; tính đúng đắn của cod
 """
 
 import asyncio
+import copy
 import logging
 import socket
 import struct
@@ -21,6 +22,7 @@ from sdnsim.openflow.codec import (
     OFPBRC_BAD_TYPE, OFPET_BAD_ACTION, OFPET_BAD_REQUEST, OFPET_FLOW_MOD_FAILED,
     OFPFMFC_UNKNOWN, OFPMP_PORT_DESC, OFPT_BARRIER_REPLY, OFPT_BARRIER_REQUEST,
     OFPT_MULTIPART_REPLY, OFPT_MULTIPART_REQUEST, PORT_DESC_ENTRY,
+    OFPPF_10MB_FD, OFPPF_1GB_FD, OFPPF_OTHER,
     pack_flow_mod, pack_packet_in, pack_packet_out, parse_error, parse_packet_in,
 )
 from sdnsim.openflow.header import Message, OFPT_FLOW_MOD, OFPT_PACKET_IN, pack_message
@@ -179,7 +181,7 @@ def _unsupported_message():
 
 
 def _unsupported_multipart():
-    return Message(OFPT_MULTIPART_REQUEST, xid=82, body=struct.pack("!HH4x", 0, 0))   # DESC
+    return Message(OFPT_MULTIPART_REQUEST, xid=82, body=struct.pack("!HH4x", 5, 0))   # QUEUE
 
 
 def _truncated_multipart():
@@ -236,6 +238,38 @@ def test_port_desc_request_is_answered_with_the_switch_ports():
     assert replies[1].xid == replies[2].xid == 83
     assert decode(replies[1]) == (OFPMP_PORT_DESC, 0, [(1, "s1-eth1"), (2, "s1-eth2"), (3, "s1-eth3")])
     assert decode(replies[2]) == (OFPMP_PORT_DESC, 0, [(1, "s2-eth1"), (2, "s2-eth2")])
+
+
+def test_port_desc_reports_configured_link_bandwidth():
+    spec = copy.deepcopy(SPEC)
+    spec["links"][0]["bandwidth"] = "100Kbps"
+    spec["links"][1]["bandwidth"] = "1Gbps"
+    spec["links"][2]["bandwidth"] = "10Mbps"
+    request = Message(OFPT_MULTIPART_REQUEST, xid=84,
+                      body=MULTIPART_HEADER.pack(OFPMP_PORT_DESC, 0))
+    controller = FakeController(on_connect=lambda send: send(request))
+
+    async def body(sched, channel, nodes):
+        await advance(sched, lambda: sum(
+            m.type == OFPT_MULTIPART_REPLY for _, m in controller.received) == 2)
+        return {dpid: msg for dpid, msg in controller.received
+                if msg.type == OFPT_MULTIPART_REPLY}
+
+    [s1_reply] = [reply for dpid, reply in asyncio.run(
+        with_network(controller, body, spec=spec)).items() if dpid == 1]
+    entries = [
+        PORT_DESC_ENTRY.unpack_from(
+            s1_reply.body, MULTIPART_HEADER.size + i * PORT_DESC_ENTRY.size)
+        for i in range(3)
+    ]
+    assert {
+        entry[0]: (entry[5], entry[7], entry[9], entry[10])
+        for entry in entries
+    } == {
+        1: (OFPPF_OTHER, OFPPF_OTHER, 100, 100),
+        2: (OFPPF_1GB_FD, OFPPF_1GB_FD, 1_000_000, 1_000_000),
+        3: (OFPPF_10MB_FD, OFPPF_10MB_FD, 10_000, 10_000),
+    }
 
 
 def test_barrier_request_is_answered_after_earlier_messages():

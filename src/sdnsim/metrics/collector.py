@@ -49,6 +49,7 @@ class Metrics:
                 out.append({"a": name, "a_port": port, "b": peer.name,
                             "b_port": peer_port, "delay": link.delay,
                             "bandwidth": link.bandwidth, "loss": link.loss,
+                            "error_rate": link.error_rate,
                             "queue_limit": link.queue_limit,
                             "a_to_b": link.direction_stats(node),
                             "b_to_a": link.direction_stats(peer)})

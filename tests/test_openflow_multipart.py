@@ -14,7 +14,9 @@ def test_entry_sizes_match_the_spec():
 
 
 def test_port_desc_reply_golden_bytes():
-    msg = pack_port_desc_reply([PortDesc(1, "02:00:00:00:01:01", "s1-eth1")], xid=5)
+    msg = pack_port_desc_reply([
+        PortDesc(1, "02:00:00:00:01:01", "s1-eth1", 1_000_000_000),
+    ], xid=5)
     assert (msg.type, msg.xid) == (OFPT_MULTIPART_REPLY, 5)
     assert msg.body[:8] == bytes.fromhex("000d" "0000" "00000000")      # PORT_DESC, không còn phần nào
     entry = msg.body[8:]
@@ -25,6 +27,13 @@ def test_port_desc_reply_golden_bytes():
     assert entry[32:40] == bytes(8)                                       # config, state
     assert entry[40:44] == OFPPF_1GB_FD.to_bytes(4, "big")                # curr
     assert entry[56:64] == (1_000_000).to_bytes(4, "big") * 2             # curr_speed, max_speed
+
+
+def test_unlimited_port_speed_is_reported_as_unknown():
+    msg = pack_port_desc_reply([PortDesc(1, "02:00:00:00:01:01", "s1-eth1")])
+    entry = PORT_DESC_ENTRY.unpack_from(msg.body, MULTIPART_HEADER.size)
+    assert entry[5:8] == (0, 0, 0)                                      # curr, advertised, supported
+    assert entry[9:11] == (0, 0)                                        # curr_speed, max_speed
 
 
 def test_empty_port_list_still_gives_a_valid_reply():

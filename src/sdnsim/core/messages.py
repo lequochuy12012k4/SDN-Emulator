@@ -16,6 +16,9 @@ class FlowMod:
     out_port: Any
     priority: int = 1
     idle_timeout: float | None = None
+    cookie: int = 0
+    group_id: int | None = None
+    meter_id: int | None = None
 
 
 @dataclass

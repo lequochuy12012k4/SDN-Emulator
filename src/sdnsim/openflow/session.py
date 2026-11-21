@@ -16,6 +16,14 @@ from .reader import MessageReader
 # datapath_id(8) n_buffers(4) n_tables(1) auxiliary_id(1) đệm(2) capabilities(4) reserved(4)
 FEATURES_REPLY_BODY = struct.Struct("!QIBB2xII")
 
+OFPC_FLOW_STATS = 1 << 0
+OFPC_TABLE_STATS = 1 << 1
+OFPC_PORT_STATS = 1 << 2
+OFPC_GROUP_STATS = 1 << 3
+SUPPORTED_CAPABILITIES = (
+    OFPC_FLOW_STATS | OFPC_TABLE_STATS | OFPC_PORT_STATS | OFPC_GROUP_STATS
+)
+
 
 class OpenFlowSession:
     """Một kết nối OpenFlow từ switch tới controller, giữ mở suốt phiên."""
@@ -77,7 +85,8 @@ class OpenFlowSession:
             self.send_nowait(Message(OFPT_ECHO_REPLY, xid=msg.xid, body=msg.body))
             return True
         if msg.type == OFPT_FEATURES_REQUEST:
-            body = FEATURES_REPLY_BODY.pack(self.dpid, 0, 1, 0, 0, 0)
+            body = FEATURES_REPLY_BODY.pack(
+                self.dpid, 0, 1, 0, SUPPORTED_CAPABILITIES, 0)
             self.send_nowait(Message(OFPT_FEATURES_REPLY, xid=msg.xid, body=body))
             return True
         return False

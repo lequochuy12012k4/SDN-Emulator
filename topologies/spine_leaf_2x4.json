@@ -1,0 +1,75 @@
+{
+  "hosts": [
+    {"name": "h1", "mac": "00:00:00:00:00:01", "ip": "10.0.0.1"},
+    {"name": "h2", "mac": "00:00:00:00:00:02", "ip": "10.0.0.2"},
+    {"name": "h3", "mac": "00:00:00:00:00:03", "ip": "10.0.0.3"},
+    {"name": "h4", "mac": "00:00:00:00:00:04", "ip": "10.0.0.4"}
+  ],
+  "switches": [
+    {"name": "s1"},
+    {"name": "s2"},
+    {"name": "s3"},
+    {"name": "s4"},
+    {"name": "s5"},
+    {"name": "s6"}
+  ],
+  "links": [
+    {
+      "a": "s1", "a_port": 1, "b": "s3", "b_port": 1,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s1", "a_port": 2, "b": "s4", "b_port": 1,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s1", "a_port": 3, "b": "s5", "b_port": 1,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s1", "a_port": 4, "b": "s6", "b_port": 1,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s2", "a_port": 1, "b": "s3", "b_port": 2,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s2", "a_port": 2, "b": "s4", "b_port": 2,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s2", "a_port": 3, "b": "s5", "b_port": 2,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "s2", "a_port": 4, "b": "s6", "b_port": 2,
+      "delay": 0.002, "bandwidth": "100Mbps", "queue_limit": 50,
+      "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h1", "a_port": 1, "b": "s3", "b_port": 3,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h2", "a_port": 1, "b": "s4", "b_port": 3,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h3", "a_port": 1, "b": "s5", "b_port": 3,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    },
+    {
+      "a": "h4", "a_port": 1, "b": "s6", "b_port": 3,
+      "delay": 0.001, "bandwidth": "1Gbps", "loss": 0, "error_rate": 0
+    }
+  ],
+  "seed": 42
+}

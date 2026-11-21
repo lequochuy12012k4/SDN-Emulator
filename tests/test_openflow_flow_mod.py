@@ -63,7 +63,7 @@ def test_table_miss_flow_golden_bytes():
     assert msg.body[48:] == bytes.fromhex(
         "0004" "0018" "00000000"
         "0000" "0010" "fffffffd" "ffff" "000000000000")                # max_len = NO_BUFFER
-    assert parse_flow_mod(msg) == ({}, "CONTROLLER", 0, None)
+    assert parse_flow_mod(msg) == FlowSpec({}, "CONTROLLER", 0, None)
 
 
 @pytest.mark.parametrize("match, out_port, priority, idle", [
@@ -83,7 +83,7 @@ def test_flow_mod_roundtrip(match, out_port, priority, idle):
 def test_flow_mod_survives_wire_framing():
     wire = pack_message(good())
     [msg] = MessageReader().feed(wire)
-    assert parse_flow_mod(msg) == ({"eth_dst": H3}, 3, 1, 5.0)
+    assert parse_flow_mod(msg) == FlowSpec({"eth_dst": H3}, 3, 1, 5.0)
 
 
 def test_match_fields_are_written_in_fixed_order():
