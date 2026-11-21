@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from sdnsim.core.host import Host
 from sdnsim.core.scheduler import Scheduler
@@ -21,6 +21,8 @@ log = logging.getLogger("sdnsim")
 class PingRequest(BaseModel):
     src: str
     dst: str
+    count: int = Field(default=1, ge=1, le=1000)          # số ping gửi
+    interval: float = Field(default=1.0, gt=0, le=60)     # giây (giờ ảo) giữa hai ping liên tiếp
 
 
 def create_app(topology_path, step=0.05, speed=1.0, autorun=True, push_interval=0.2,
@@ -93,9 +95,12 @@ def create_app(topology_path, step=0.05, speed=1.0, autorun=True, push_interval=
         src, dst = nodes.get(req.src), nodes.get(req.dst)
         if not isinstance(src, Host) or not isinstance(dst, Host):
             raise HTTPException(404, "src và dst phải là host có trong mạng")
-        counter["seq"] += 1
-        sched.schedule(0, src.ping_ip, dst.ip, counter["seq"])
-        return {"seq": counter["seq"]}
+        first = counter["seq"] + 1
+        for i in range(req.count):
+            counter["seq"] += 1
+            # seq của ICMP chỉ có 16 bit; quay vòng để không vượt khi gửi rất nhiều ping
+            sched.schedule(i * req.interval, src.ping_ip, dst.ip, counter["seq"] & 0xFFFF)
+        return {"seq": first, "count": req.count}
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):

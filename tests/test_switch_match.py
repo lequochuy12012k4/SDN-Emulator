@@ -80,6 +80,25 @@ def test_handle_installs_flow_with_in_port_from_message():
     assert len(ports[3].packets) == 1
 
 
+def test_flow_mod_with_same_match_and_priority_replaces_the_old_flow():
+    sw, channel, ports = make_switch()
+    sw.flow_mod({"eth_dst": H2}, 2)
+    sw.receive(1, pkt_to_h2())                       # flow cũ đã đếm 1 gói
+    sw.flow_mod({"eth_dst": H2}, 3)                  # cùng match và priority: thay thế, không nhân đôi
+    assert len(sw.flows) == 1
+    assert sw.flows[0]["out_port"] == 3 and sw.flows[0]["packets"] == 0
+    sw.receive(1, pkt_to_h2())
+    assert len(ports[3].packets) == 1 and len(ports[2].packets) == 1
+
+
+def test_flows_with_different_match_or_priority_coexist():
+    sw, channel, ports = make_switch()
+    sw.flow_mod({"eth_dst": H2}, 2, priority=1)
+    sw.flow_mod({"eth_dst": H2}, 3, priority=2)      # khác priority
+    sw.flow_mod({"eth_dst": H3}, 3, priority=1)      # khác match
+    assert len(sw.flows) == 3
+
+
 SPEC = {
     "hosts": [
         {"name": "h1", "mac": H1, "ip": "10.0.0.1"},

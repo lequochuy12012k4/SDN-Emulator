@@ -6,6 +6,7 @@ giữa OpenFlowChannel, OpenFlowSession và codec; tính đúng đắn của cod
 """
 
 import asyncio
+import logging
 import socket
 import struct
 
@@ -128,6 +129,18 @@ def test_idle_timeout_set_by_controller_expires_flows_in_simulated_time():
     assert after > before                          # flow đã hết hạn nên ping 2 phải hỏi lại controller
     assert len(nodes["h1"].rtts) == 2              # nhưng ping vẫn thành công
     assert nodes["s1"].flows and all(f["idle_timeout"] == 1.0 for f in nodes["s1"].flows)   # flow được cài lại
+
+
+@pytest.mark.parametrize("controller_timeout, expected", [(2, "idle_timeout=2.0"), (None, "idle_timeout=None")])
+def test_flow_mod_is_logged_with_its_idle_timeout(caplog, controller_timeout, expected):
+    caplog.set_level(logging.INFO, logger="sdnsim.openflow")
+
+    async def body(sched, channel, nodes):
+        await ping(sched, nodes, 1)
+
+    asyncio.run(with_network(FakeController(idle_timeout=controller_timeout), body))
+    messages = [r.getMessage() for r in caplog.records if r.name == "sdnsim.openflow"]
+    assert any("FLOW_MOD" in m and expected in m for m in messages)
 
 
 def test_each_switch_gets_its_own_dpid():

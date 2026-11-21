@@ -1,11 +1,14 @@
 import os
 from pathlib import Path
+import logging
 
 from sdnsim.api.app import create_app
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env", override=True)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
 
 DEFAULT = Path(__file__).resolve().parents[3] / "topologies" / "two_switch.json"
 TOPOLOGY = Path(os.environ.get("SDNSIM_TOPOLOGY", DEFAULT))

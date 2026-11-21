@@ -1,14 +1,18 @@
 from sdnsim.core.packet import Packet
 
 BROADCAST = "ff:ff:ff:ff:ff:ff"
+ARP_TIMEOUT = 1.0        # giây chờ ARP reply trước khi hỏi lại
+ARP_ATTEMPTS = 3         # tổng số lần gửi ARP request trước khi bỏ cuộc
+
 
 class Host:
     def __init__(self, sched, name, mac, ip=None):
         self.sched, self.name, self.mac, self.ip = sched, name, mac, ip
-        self.arp_table = {}    # {ip: mac}
+        self.arp_table = {}      # {ip: mac}
         self.ports = {}
-        self.pending = {} 
-        self.rtts = []          # RTT (giây) của các ping đã nhận reply
+        self.pending = {}        # {ip đích: [seq các ping đang chờ ARP reply]}
+        self.arp_failures = 0    # số ping bị bỏ vì không phân giải được ARP
+        self.rtts = []           # RTT (giây) của các ping đã nhận reply
 
     def send(self, pkt):
         self.ports[1].transmit(self, pkt)
@@ -17,17 +21,28 @@ class Host:
         self.send(Packet(
             self.mac, dst_mac, "icmp_req", seq, self.sched.now,
             ip_src=self.ip, ip_dst=dst_ip,
-        )) 
+        ))
 
     def ping_ip(self, dst_ip, seq=1):
         if dst_ip in self.arp_table:
             self.ping(self.arp_table[dst_ip], seq, dst_ip)
             return
-        self.pending[dst_ip] = seq
+        waiting = self.pending.setdefault(dst_ip, [])
+        waiting.append(seq)
+        if len(waiting) == 1:                 # ping đầu tiên mới khởi động việc hỏi ARP
+            self._ask_arp(dst_ip, 1, seq)
+
+    def _ask_arp(self, dst_ip, attempt, seq):
+        if dst_ip not in self.pending:        # đã có ARP reply
+            return
+        if attempt > ARP_ATTEMPTS:            # hết lượt hỏi: bỏ các ping đang chờ
+            self.arp_failures += len(self.pending.pop(dst_ip))
+            return
         self.send(Packet(
             self.mac, BROADCAST, "arp_req", seq, self.sched.now,
             ip_src=self.ip, ip_dst=dst_ip,
         ))
+        self.sched.schedule(ARP_TIMEOUT, self._ask_arp, dst_ip, attempt + 1, seq)
 
     def receive(self, port, pkt):
         if pkt.eth_dst not in (self.mac, BROADCAST):
@@ -49,6 +64,5 @@ class Host:
                 ))
         elif pkt.kind == "arp_rep":
             self.arp_table[pkt.ip_src] = pkt.eth_src
-            seq = self.pending.pop(pkt.ip_src, None)
-            if seq is not None:
+            for seq in self.pending.pop(pkt.ip_src, []):
                 self.ping(pkt.eth_src, seq, pkt.ip_src)

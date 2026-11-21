@@ -49,6 +49,7 @@
         <button id="go">Ping</button>
     </p>
     <div id="topo"></div>
+    <div id="links"></div>
     <div id="hosts"></div>
     <div id="switches"></div>
 
@@ -115,12 +116,40 @@
             }
             $("topo").innerHTML = g + "</svg>";
         }
-        
+        function idleText(f, now) {
+            if (f.idle_timeout == null) return "không hết hạn";
+            const left = Math.max(0, f.idle_timeout - (now - f.last_hit));
+            return `${f.idle_timeout}s (còn ${left.toFixed(1)}s)`;
+        }
+
+        function fmtBw(b) {
+            if (b == null) return "không giới hạn";
+            if (b >= 1e9) return `${+(b / 1e9).toFixed(3)} Gb/s`;
+            if (b >= 1e6) return `${+(b / 1e6).toFixed(3)} Mb/s`;
+            if (b >= 1e3) return `${+(b / 1e3).toFixed(3)} kb/s`;
+            return `${b} b/s`;
+        }
+
+        function dirText(d) {
+            let t = `${d.sent_packets} gói, mất ${d.dropped_loss}, tràn hàng đợi ${d.dropped_queue}`;
+            if (d.queued) t += `, đang đợi ${d.queued}`;
+            return t;
+        }
+        function linksHtml(links) {
+            let h = "<h3>Liên kết</h3><table>" +
+                head(["Liên kết", "độ trễ", "băng thông", "mất gói", "hàng đợi tối đa", "chiều a → b", "chiều b → a"]);
+            for (const l of links)
+                h += row([`${l.a}:${l.a_port} — ${l.b}:${l.b_port}`, `${+(l.delay * 1000).toFixed(3)} ms`,
+                fmtBw(l.bandwidth), `${+(l.loss * 100).toFixed(2)}%`, l.queue_limit ?? "-",
+                dirText(l.a_to_b), dirText(l.b_to_a)]);
+            return h + "</table>";
+        }
         function render(s) {
+            $("links").innerHTML = linksHtml(s.links);
             $("ctl").textContent = s.controller.mode === "openflow"
-            ? "OpenFlow " + Object.entries(s.controller.switches)
-                .map(([n, ok]) => n + (ok ? " ✔" : " ✘")).join(" ")
-            : "nội bộ";
+                ? "OpenFlow " + Object.entries(s.controller.switches)
+                    .map(([n, ok]) => n + (ok ? " ✔" : " ✘")).join(" ")
+                : "nội bộ";
             drawTopo(s);
             $("time").textContent = s.time.toFixed(2) + " s";
             $("pin").textContent = s.packet_in_total;

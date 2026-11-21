@@ -50,6 +50,10 @@ class Switch:
 
     def flow_mod(self, match, out_port, priority=1, idle_timeout=None):
         print(f"[{self.sched.now*1000:7.2f} ms] {self.name}: FLOW_MOD match={match} -> port {out_port}")
+        self.flows = [
+            flow for flow in self.flows
+            if not (flow["match"] == match and flow["priority"] == priority)
+        ]
         self.flows.append({"match": match, "out_port": out_port, "priority": priority,
                             "packets": 0, "bytes": 0, "idle_timeout": idle_timeout,
                         "last_hit": self.sched.now})

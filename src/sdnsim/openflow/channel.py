@@ -19,6 +19,7 @@ làm đóng phiên.
 """
 
 import asyncio
+import logging
 from collections import Counter
 from itertools import count
 
@@ -32,6 +33,8 @@ from .codec import (
 )
 from .header import OFPT_FLOW_MOD, OFPT_PACKET_OUT, Message
 from .session import OpenFlowSession
+
+log = logging.getLogger("sdnsim.openflow")
 
 
 class OpenFlowChannel:
@@ -115,6 +118,8 @@ class OpenFlowChannel:
 
     def _error(self, name, session, err_type, code, request) -> None:
         self.errors.append((name, err_type, code))
+        log.warning("%s: từ chối thông điệp type=%s, trả ERROR loại %s mã %s",
+                    name, request.type, err_type, code)
         self._send(name, session, pack_error(err_type, code, request))
 
     @staticmethod
@@ -180,4 +185,6 @@ class OpenFlowChannel:
         if not self._port_exists(sw, spec.out_port):
             self._error(sw.name, session, OFPET_BAD_ACTION, OFPBAC_BAD_OUT_PORT, msg)
             return
+        log.info("%s nhận FLOW_MOD: match=%s -> %s, priority=%s, idle_timeout=%s",
+                 sw.name, spec.match, spec.out_port, spec.priority, spec.idle_timeout)
         self._later(sw.flow_mod, spec.match, spec.out_port, spec.priority, spec.idle_timeout)
