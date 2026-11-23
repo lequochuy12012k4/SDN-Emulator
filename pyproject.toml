@@ -10,6 +10,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest"]
+desktop = ["fastapi", "uvicorn", "pywebview", "os-ken", "python-dotenv"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

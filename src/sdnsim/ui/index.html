@@ -3,57 +3,113 @@
 
 <head>
     <meta charset="utf-8">
-    <title>SDN Emulator</title>
+    <title>SDN Emulator - Web Dashboard</title>
     <style>
         body {
-            font-family: system-ui, sans-serif;
+            font-family: system-ui, -apple-system, sans-serif;
             margin: 16px;
+            color: #1f2937;
+            background: #f9fafb;
+        }
+
+        h2 {
+            margin: 0 0 10px;
+        }
+
+        .bar {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .ping-bar {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        select,
+        button {
+            padding: 5px 10px;
+            border-radius: 6px;
+            border: 1px solid #d1d5db;
+            font-size: 13px;
+        }
+
+        button {
+            background: #2563eb;
+            color: #fff;
+            border-color: #2563eb;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        #topo {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 14px;
+            overflow-x: auto;
         }
 
         table {
             border-collapse: collapse;
             margin: 6px 0 14px;
+            background: #fff;
         }
 
         th,
         td {
-            border: 1px solid #bbb;
-            padding: 3px 10px;
+            border: 1px solid #d1d5db;
+            padding: 4px 10px;
             text-align: right;
+            font-size: 13px;
         }
 
         th {
-            background: #eee;
-        }
-
-        .bar span {
-            margin-right: 20px;
+            background: #f3f4f6;
+            text-align: center;
         }
 
         h3 {
-            margin: 14px 0 2px;
-        }
-
-        #topo svg {
-            display: block;
-            max-width: 100%;
-            height: auto;
+            margin: 16px 0 4px;
+            font-size: 15px;
         }
     </style>
 </head>
 
 <body>
-    <h2>SDN Emulator</h2>
+    <h2>SDN Emulator — Web Dashboard</h2>
     <div class="bar">
         <span>Kết nối: <b id="status">...</b></span>
         <span>Controller: <b id="ctl">-</b></span>
         <span>Giờ ảo: <b id="time">-</b></span>
         <span>PACKET_IN: <b id="pin">-</b></span>
     </div>
-    <p>
-        Ping từ <select id="src"></select> tới <select id="dst"></select>
+    <div class="ping-bar">
+        <span>Ping từ</span>
+        <select id="src"></select>
+        <span>tới</span>
+        <select id="dst"></select>
         <button id="go">Ping</button>
-    </p>
+    </div>
+
     <div id="topo"></div>
     <div id="links"></div>
     <div id="hosts"></div>
@@ -61,138 +117,67 @@
 
     <script>
         const $ = id => document.getElementById(id);
-        const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
         const row = cells => "<tr>" + cells.map(c => `<td>${esc(c)}</td>`).join("") + "</tr>";
         const head = cols => "<tr>" + cols.map(c => `<th>${esc(c)}</th>`).join("") + "</tr>";
 
-        let hostOptionsKey = null;
         function fillSelects(hosts) {
             const names = Object.keys(hosts);
-            const key = JSON.stringify(names);
-            if (key === hostOptionsKey) return;
-            const src = $("src"), dst = $("dst");
-            const srcValue = src.value, dstValue = dst.value;
-            for (const select of [src, dst]) {
-                select.options.length = 0;
-                for (const name of names) select.add(new Option(name, name));
+            const curSrc = $("src").value;
+            const curDst = $("dst").value;
+            const existing = Array.from($("src").options).map(o => o.value);
+            if (JSON.stringify(existing) === JSON.stringify(names)) return;
+
+            $("src").innerHTML = "";
+            $("dst").innerHTML = "";
+            for (const name of names) {
+                $("src").add(new Option(name, name));
+                $("dst").add(new Option(name, name));
             }
-            if (names.includes(srcValue)) src.value = srcValue;
-            if (names.includes(dstValue)) dst.value = dstValue;
-            else if (names.length > 1) dst.selectedIndex = 1;
-            hostOptionsKey = key;
+            if (names.includes(curSrc)) $("src").value = curSrc;
+            if (names.includes(curDst)) $("dst").value = curDst;
+            else if ($("dst").options.length > 1) $("dst").selectedIndex = 1;
         }
+
         let prev = {};
 
-        function layout(s) {
+        function computePos(s) {
             const pos = {};
-            const switches = Object.keys(s.switches).sort();
-            const hosts = Object.keys(s.hosts).sort();
-            const adjacent = new Map(switches.map(n => [n, new Set()]));
-            for (const l of s.links) {
-                if (adjacent.has(l.a) && adjacent.has(l.b)) {
-                    adjacent.get(l.a).add(l.b);
-                    adjacent.get(l.b).add(l.a);
+            if (s.layout) {
+                for (const c of (s.layout.controllers || [])) {
+                    pos[c.name] = { x: c.x, y: c.y, kind: "ctrl", data: c };
                 }
-            }
-            const maxDegree = Math.max(0, ...switches.map(n => adjacent.get(n).size));
-            const spines = switches.filter(n => adjacent.get(n).size === maxDegree);
-            const leaves = switches.filter(n => !spines.includes(n));
-            const spineLeaf = spines.length >= 2 && leaves.length >= 2 &&
-                spines.every(sp => adjacent.get(sp).size === leaves.length &&
-                    leaves.every(leaf => adjacent.get(sp).has(leaf))) &&
-                leaves.every(leaf => adjacent.get(leaf).size === spines.length &&
-                    spines.every(sp => adjacent.get(leaf).has(sp)));
-            if (spineLeaf) {
-                const width = Math.max(
-                    480,
-                    160 + (leaves.length - 1) * 150,
-                    hosts.length ? 160 + (hosts.length - 1) * 125 : 0
-                );
-                const leafStartX = (width - (leaves.length - 1) * 150) / 2;
-                leaves.forEach((n, i) => pos[n] = { x: leafStartX + i * 150, y: 190, sw: true });
-                spines.forEach((n, i) => pos[n] = {
-                    x: width * (i + 1) / (spines.length + 1),
-                    y: 80,
-                    sw: true
-                });
-                const hostStartX = (width - (hosts.length - 1) * 125) / 2;
-                hosts.forEach((n, i) => pos[n] = {
-                    x: hostStartX + i * 125,
-                    y: 320,
-                    sw: false
-                });
-                return { pos, width, height: hosts.length ? 372 : 260 };
-            }
-            const levels = new Map(), visited = new Set();
-            for (const start of switches) {
-                if (visited.has(start)) continue;
-                const component = [], pending = [start];
-                visited.add(start);
-                while (pending.length) {
-                    const n = pending.pop();
-                    component.push(n);
-                    for (const next of adjacent.get(n)) {
-                        if (!visited.has(next)) {
-                            visited.add(next);
-                            pending.push(next);
-                        }
-                    }
+                for (const [n, info] of Object.entries(s.layout.switches || {})) {
+                    if (s.switches[n]) pos[n] = { x: info.x, y: info.y, kind: "sw", ports: info.ports };
                 }
-                const root = component.reduce((best, n) =>
-                    adjacent.get(n).size > adjacent.get(best).size ? n : best);
-                const distance = new Map([[root, 0]]), queue = [root];
-                for (let i = 0; i < queue.length; i++) {
-                    const n = queue[i], depth = distance.get(n);
-                    if (!levels.has(depth)) levels.set(depth, []);
-                    levels.get(depth).push(n);
-                    for (const next of adjacent.get(n)) {
-                        if (!distance.has(next)) {
-                            distance.set(next, depth + 1);
-                            queue.push(next);
-                        }
-                    }
+                for (const [n, info] of Object.entries(s.layout.hosts || {})) {
+                    if (s.hosts[n]) pos[n] = { x: info.x, y: info.y, kind: "host", ports: info.ports };
                 }
+                return pos;
             }
-            for (const nodes of levels.values()) nodes.sort();
 
-            const maxDepth = Math.max(0, ...levels.keys());
-            const maxLevelSize = Math.max(1, ...[...levels.values()].map(nodes => nodes.length));
-            const horizontal = maxDepth >= maxLevelSize - 1;
-            const width = Math.max(
-                480,
-                horizontal ? 230 + maxDepth * 180 : 160 + (maxLevelSize - 1) * 150,
-                hosts.length ? 160 + (hosts.length - 1) * 125 : 0
-            );
-            for (const [depth, nodes] of levels) {
-                nodes.forEach((n, i) => {
-                    if (horizontal) {
-                        pos[n] = {
-                            x: 115 + depth * 180,
-                            y: 80 + ((maxLevelSize - nodes.length) / 2 + i) * 110,
-                            sw: true
-                        };
-                    } else {
-                        pos[n] = {
-                            x: (width - (nodes.length - 1) * 150) / 2 + i * 150,
-                            y: 80 + depth * 140,
-                            sw: true
-                        };
-                    }
-                });
+            // Fallback nếu không có s.layout
+            const swNames = Object.keys(s.switches);
+            swNames.forEach((n, i) => pos[n] = { x: 140 + i * 230, y: 150, kind: "sw", ports: 4 });
+            const attach = {};
+            for (const l of s.links) {
+                for (const [h, o] of [[l.a, l.b], [l.b, l.a]]) {
+                    if (s.hosts[h] && s.switches[o]) (attach[o] ||= []).push(h);
+                }
             }
-            const maxSwitchY = Math.max(80, ...switches.map(n => pos[n].y));
-            const hostY = switches.length ? maxSwitchY + 130 : 110;
-            const hostStartX = (width - (hosts.length - 1) * 125) / 2;
-            hosts.forEach((n, i) => pos[n] = {
-                x: hostStartX + i * 125,
-                y: hostY,
-                sw: false
+            for (const [sw, hs] of Object.entries(attach)) {
+                hs.forEach((h, j) => pos[h] = { x: pos[sw].x + (j - (hs.length - 1) / 2) * 120, y: 280, kind: "host", ports: 1 });
+            }
+            Object.keys(s.hosts).forEach((h, idx) => {
+                if (!pos[h]) pos[h] = { x: 120 + idx * 120, y: 280, kind: "host", ports: 1 };
             });
-            const height = Math.max(260, hostY + (hosts.length ? 52 : 60));
-            return { pos, width, height };
+            return pos;
         }
 
         function linkPackets(s, l) {
+            if (l.a_to_b && l.b_to_a) {
+                return (l.a_to_b.sent_packets || 0) + (l.b_to_a.sent_packets || 0);
+            }
             for (const [n, p] of [[l.a, l.a_port], [l.b, l.b_port]]) {
                 const c = s.switches[n] && s.switches[n].ports[p];
                 if (c) return c.rx_packets + c.tx_packets;
@@ -200,48 +185,73 @@
             return 0;
         }
 
-        function portLabel(pos, name, peer, port) {
-            const from = pos[name], to = pos[peer];
-            const dx = to.x - from.x, dy = to.y - from.y;
-            const halfWidth = from.sw ? 35 : 40, halfHeight = from.sw ? 20 : 22;
-            const scaleX = dx === 0 ? Infinity : (halfWidth + 7) / Math.abs(dx);
-            const scaleY = dy === 0 ? Infinity : (halfHeight + 7) / Math.abs(dy);
-            const scale = Math.min(scaleX, scaleY);
-            const x = from.x + dx * scale, y = from.y + dy * scale;
-            const anchor = dx > 0 ? "start" : dx < 0 ? "end" : "middle";
-            return `<text x="${x}" y="${y}" font-size="10" text-anchor="${anchor}" dominant-baseline="middle" fill="#222" stroke="#fff" stroke-width="4" paint-order="stroke"><title>${esc(`${name} cổng ${port}`)}</title>cổng ${esc(port)}</text>`;
-        }
-
         function drawTopo(s) {
-            const { pos, width: W, height: H } = layout(s);
-            let g = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
-            const labels = [];
+            const pos = computePos(s);
+            let maxX = 760, maxY = 390;
+            for (const p of Object.values(pos)) {
+                maxX = Math.max(maxX, p.x + 120);
+                maxY = Math.max(maxY, p.y + 80);
+            }
+            let g = `<svg width="${maxX}" height="${maxY}" viewBox="0 0 ${maxX} ${maxY}">`;
+
+            // Đường nối Controller <-> Switch theo đúng control_links + nhãn cổng
+            for (const cl of (s.layout?.control_links || [])) {
+                const cp = pos[cl.controller], sp = pos[cl.switch];
+                if (!cp || !sp) continue;
+                const isOk = cp.data.mode !== "openflow" || (s.controller.switches && s.controller.switches[cl.switch]);
+                g += `<line x1="${cp.x}" y1="${cp.y}" x2="${sp.x}" y2="${sp.y}" stroke="${isOk ? "#8b5cf6" : "#ef4444"}" stroke-width="2" stroke-dasharray="5,5"/>`;
+                const cx = cp.x + (sp.x - cp.x) * 0.24, cy = cp.y + (sp.y - cp.y) * 0.24;
+                const sx = cp.x + (sp.x - cp.x) * 0.76, sy = cp.y + (sp.y - cp.y) * 0.76;
+                g += `<circle cx="${cx}" cy="${cy}" r="10" fill="#fff" stroke="#8b5cf6" stroke-width="1.3"/>`;
+                g += `<text x="${cx}" y="${cy + 3.5}" font-size="10" font-weight="700" text-anchor="middle" fill="#5b21b6">p${cl.c_port}</text>`;
+                g += `<circle cx="${sx}" cy="${sy}" r="11" fill="#fff" stroke="#8b5cf6" stroke-width="1.3"/>`;
+                g += `<text x="${sx}" y="${sy + 3.5}" font-size="9.5" font-weight="700" text-anchor="middle" fill="#5b21b6">OF</text>`;
+            }
+
+            // Các đường link dữ liệu + nhãn số cổng ở 2 đầu
             for (const l of s.links) {
                 const a = pos[l.a], b = pos[l.b];
                 if (!a || !b) continue;
                 const key = `${l.a}:${l.a_port}-${l.b}:${l.b_port}`;
                 const pk = linkPackets(s, l);
-                const active = pk > (prev[key] ?? pk);     // có gói mới kể từ lần đẩy trước
+                const active = pk > (prev[key] ?? pk);
                 prev[key] = pk;
-                const w = 2 + Math.min(6, Math.log2(1 + pk) / 2);
-                g += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${active ? "#e67e22" : "#999"}" stroke-width="${w}"/>`;
-                g += `<text x="${(a.x + b.x) / 2}" y="${(a.y + b.y) / 2 - 6}" font-size="11" text-anchor="middle" fill="#444">${pk}</text>`;
-                labels.push(portLabel(pos, l.a, l.b, l.a_port));
-                labels.push(portLabel(pos, l.b, l.a, l.b_port));
+                const w = 2.2 + Math.min(5, Math.log2(1 + pk) / 2);
+
+                g += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${active ? "#e67e22" : "#64748b"}" stroke-width="${w}"/>`;
+
+                const ax = a.x + (b.x - a.x) * 0.24, ay = a.y + (b.y - a.y) * 0.24;
+                const bx = a.x + (b.x - a.x) * 0.76, by = a.y + (b.y - a.y) * 0.76;
+                g += `<circle cx="${ax}" cy="${ay}" r="10" fill="#fff" stroke="#3b82f6" stroke-width="1.3"/>`;
+                g += `<text x="${ax}" y="${ay + 3.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#1e3a8a">p${l.a_port}</text>`;
+                g += `<circle cx="${bx}" cy="${by}" r="10" fill="#fff" stroke="#3b82f6" stroke-width="1.3"/>`;
+                g += `<text x="${bx}" y="${by + 3.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#1e3a8a">p${l.b_port}</text>`;
+
+                const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 7;
+                g += `<text x="${mx}" y="${my}" font-size="11" font-weight="600" text-anchor="middle" fill="#334155" paint-order="stroke" stroke="#fff" stroke-width="4">${pk} pkt</text>`;
             }
+
+
+            // Vẽ các node
             for (const [n, p] of Object.entries(pos)) {
-                if (p.sw) {
-                    g += `<rect x="${p.x - 35}" y="${p.y - 20}" width="70" height="40" rx="6" fill="#2c6fbb"/>`;
-                    g += `<text x="${p.x}" y="${p.y + 5}" font-size="14" text-anchor="middle" fill="#fff">${esc(n)}</text>`;
+                if (p.kind === "ctrl") {
+                    const modeTxt = p.data.mode === "openflow" ? `OpenFlow :${p.data.port}` : "Internal";
+                    g += `<rect x="${p.x - 58}" y="${p.y - 22}" width="116" height="44" rx="10" fill="#6d28d9"/>`;
+                    g += `<text x="${p.x}" y="${p.y - 2}" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">${esc(n)}</text>`;
+                    g += `<text x="${p.x}" y="${p.y + 14}" font-size="10" text-anchor="middle" fill="#ede9fe">${esc(modeTxt)} (${p.data.ports || 8}p)</text>`;
+                } else if (p.kind === "sw") {
+                    g += `<rect x="${p.x - 42}" y="${p.y - 22}" width="84" height="44" rx="8" fill="#2563eb"/>`;
+                    g += `<text x="${p.x}" y="${p.y - 2}" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">${esc(n)}</text>`;
+                    g += `<text x="${p.x}" y="${p.y + 14}" font-size="10" text-anchor="middle" fill="#dbeafe">${p.ports || 4} cổng</text>`;
                 } else {
-                    g += `<rect x="${p.x - 40}" y="${p.y - 22}" width="80" height="44" rx="6" fill="#eef3fb" stroke="#2c6fbb"/>`;
-                    g += `<text x="${p.x}" y="${p.y - 3}" font-size="13" text-anchor="middle">${esc(n)}</text>`;
-                    g += `<text x="${p.x}" y="${p.y + 13}" font-size="10" text-anchor="middle" fill="#555">${esc(s.hosts[n].ip)}</text>`;
+                    g += `<rect x="${p.x - 48}" y="${p.y - 24}" width="96" height="48" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>`;
+                    g += `<text x="${p.x}" y="${p.y - 4}" font-size="13" font-weight="700" text-anchor="middle" fill="#1e3a8a">${esc(n)}</text>`;
+                    g += `<text x="${p.x}" y="${p.y + 12}" font-size="10.5" text-anchor="middle" fill="#475569">${esc(s.hosts[n]?.ip || "")}</text>`;
                 }
             }
-            g += labels.join("");
             $("topo").innerHTML = g + "</svg>";
         }
+
         function idleText(f, now) {
             if (f.idle_timeout == null) return "không hết hạn";
             const left = Math.max(0, f.idle_timeout - (now - f.last_hit));
@@ -257,34 +267,44 @@
         }
 
         function dirText(d) {
-            let t = `${d.sent_packets} gói, mất ${d.dropped_loss}, tràn hàng đợi ${d.dropped_queue}`;
-            if (d.queued) t += `, đang đợi ${d.queued}`;
+            if (!d) return "-";
+            let t = `${d.sent_packets} gói, mất ${d.dropped_loss}, tràn ${d.dropped_queue}`;
+            if (d.queued) t += `, đợi ${d.queued}`;
             return t;
         }
+
         function linksHtml(links) {
+            if (!links.length) return "";
             let h = "<h3>Liên kết</h3><table>" +
-                head(["Liên kết", "độ trễ", "băng thông", "mất gói", "hàng đợi tối đa", "chiều a → b", "chiều b → a"]);
-            for (const l of links)
-                h += row([`${l.a}:${l.a_port} — ${l.b}:${l.b_port}`, `${+(l.delay * 1000).toFixed(3)} ms`,
-                fmtBw(l.bandwidth), `${+(l.loss * 100).toFixed(2)}%`, l.queue_limit ?? "-",
-                dirText(l.a_to_b), dirText(l.b_to_a)]);
+                head(["Liên kết", "độ trễ", "băng thông", "mất gói", "hàng đợi", "chiều a → b", "chiều b → a"]);
+            for (const l of links) {
+                h += row([
+                    `${l.a}:${l.a_port} — ${l.b}:${l.b_port}`,
+                    `${+(l.delay * 1000).toFixed(3)} ms`,
+                    fmtBw(l.bandwidth),
+                    `${+((l.loss || 0) * 100).toFixed(2)}%`,
+                    l.queue_limit ?? "-",
+                    dirText(l.a_to_b),
+                    dirText(l.b_to_a),
+                ]);
+            }
             return h + "</table>";
         }
+
         function render(s) {
-            $("links").innerHTML = linksHtml(s.links);
             $("ctl").textContent = s.controller.mode === "openflow"
-                ? "OpenFlow " + Object.entries(s.controller.switches)
-                    .map(([n, ok]) => n + (ok ? " ✔" : " ✘")).join(" ")
+                ? "OpenFlow " + Object.entries(s.controller.switches || {}).map(([n, ok]) => n + (ok ? " ✔" : " ✘")).join(" ")
                 : "nội bộ";
-            drawTopo(s);
             $("time").textContent = s.time.toFixed(2) + " s";
             $("pin").textContent = s.packet_in_total;
             fillSelects(s.hosts);
+            drawTopo(s);
+            $("links").innerHTML = linksHtml(s.links);
 
-            let h = "<h3>Host</h3><table>" + head(["Tên", "IP", "Số ping", "RTT gần nhất (ms)"]);
+            let h = "<h3>Host</h3><table>" + head(["Tên", "IP", "MAC", "Số ping", "RTT gần nhất (ms)"]);
             for (const [name, x] of Object.entries(s.hosts)) {
                 const last = x.rtts.length ? (x.rtts[x.rtts.length - 1] * 1000).toFixed(2) : "-";
-                h += row([name, x.ip, x.rtts.length, last]);
+                h += row([name, x.ip, x.mac, x.rtts.length, last]);
             }
             $("hosts").innerHTML = h + "</table>";
 
@@ -292,17 +312,14 @@
             for (const [name, x] of Object.entries(s.switches)) {
                 sw += `<h3>Switch ${esc(name)} (table-miss: ${x.table_misses})</h3>`;
                 sw += "<table>" + head(["Cổng", "rx gói", "rx byte", "tx gói", "tx byte"]);
-                for (const [p, c] of Object.entries(x.ports))
+                for (const [p, c] of Object.entries(x.ports)) {
                     sw += row([p, c.rx_packets, c.rx_bytes, c.tx_packets, c.tx_bytes]);
-                sw += "</table><table>" + head(["match", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout còn lại"]);
-                for (const f of x.flows)
-                    sw += row([
-                        Object.entries(f.match).map(([k, v]) => `${k}=${v}`).join(", ") || "(mọi gói)",
-                        f.out_port, f.priority, f.packets, f.bytes,
-                        f.idle_timeout == null
-                            ? "-"
-                            : `${Math.max(0, f.idle_timeout - (s.time - f.last_hit)).toFixed(1)} s`
-                    ])
+                }
+                sw += "</table><table>" + head(["match", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout"]);
+                for (const f of x.flows) {
+                    const matchTxt = Object.entries(f.match).map(([k, v]) => `${k}=${v}`).join(", ") || "(mọi gói)";
+                    sw += row([matchTxt, f.out_port, f.priority, f.packets, f.bytes, idleText(f, s.time)]);
+                }
                 sw += "</table>";
             }
             $("switches").innerHTML = sw;
@@ -313,11 +330,14 @@
         ws.onclose = () => $("status").textContent = "mất kết nối";
         ws.onmessage = e => render(JSON.parse(e.data));
 
-        $("go").onclick = () => fetch("/ping", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ src: $("src").value, dst: $("dst").value }),
-        });
+        $("go").onclick = () => {
+            if (!$("src").value || !$("dst").value) return;
+            fetch("/ping", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ src: $("src").value, dst: $("dst").value }),
+            });
+        };
     </script>
 </body>
 

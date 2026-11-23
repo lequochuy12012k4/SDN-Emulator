@@ -1,0 +1,168 @@
+{
+  "hosts": [
+    {
+      "name": "h1",
+      "mac": "00:00:00:00:00:01",
+      "ip": "10.0.0.1",
+      "ports": 1,
+      "x": 127,
+      "y": 477
+    },
+    {
+      "name": "h2",
+      "mac": "00:00:00:00:00:02",
+      "ip": "10.0.0.2",
+      "ports": 1,
+      "x": 419,
+      "y": 500
+    },
+    {
+      "name": "h3",
+      "mac": "00:01:00:00:00:01",
+      "ip": "10.0.0.3",
+      "ports": 1,
+      "x": 1046,
+      "y": 530
+    },
+    {
+      "name": "h4",
+      "mac": "00:02:00:00:00:02",
+      "ip": "10.0.0.4",
+      "ports": 1,
+      "x": 664,
+      "y": 530
+    }
+  ],
+  "switches": [
+    {
+      "name": "s1",
+      "ports": 4,
+      "x": 130,
+      "y": 249
+    },
+    {
+      "name": "s2",
+      "ports": 4,
+      "x": 426,
+      "y": 271
+    },
+    {
+      "name": "s3",
+      "ports": 4,
+      "x": 1038,
+      "y": 272
+    },
+    {
+      "name": "s4",
+      "ports": 4,
+      "x": 694,
+      "y": 284
+    }
+  ],
+  "links": [
+    {
+      "a": "h1",
+      "a_port": 1,
+      "b": "s1",
+      "b_port": 1,
+      "delay": 0.001,
+      "bandwidth": null,
+      "loss": 0,
+      "queue_limit": null
+    },
+    {
+      "a": "h2",
+      "a_port": 1,
+      "b": "s2",
+      "b_port": 2,
+      "delay": 0.001,
+      "bandwidth": null,
+      "loss": 0,
+      "queue_limit": null
+    },
+    {
+      "a": "s1",
+      "a_port": 3,
+      "b": "s2",
+      "b_port": 1,
+      "delay": 0.001,
+      "bandwidth": null,
+      "loss": 0,
+      "queue_limit": null
+    },
+    {
+      "a": "h3",
+      "a_port": 1,
+      "b": "s3",
+      "b_port": 1,
+      "delay": 0.001,
+      "bandwidth": null,
+      "loss": 0,
+      "queue_limit": null
+    },
+    {
+      "a": "s4",
+      "a_port": 1,
+      "b": "s2",
+      "b_port": 3,
+      "delay": 0.001,
+      "bandwidth": null,
+      "loss": 0,
+      "queue_limit": null
+    },
+    {
+      "a": "s4",
+      "a_port": 2,
+      "b": "h4",
+      "b_port": 1,
+      "delay": 0.001,
+      "bandwidth": null,
+      "loss": 0,
+      "queue_limit": null
+    },
+    {
+      "a": "s4",
+      "a_port": 3,
+      "b": "s3",
+      "b_port": 2,
+      "delay": 0.001,
+      "bandwidth": null,
+      "loss": 0,
+      "queue_limit": null
+    }
+  ],
+  "controllers": [
+    {
+      "name": "c0",
+      "mode": "internal",
+      "idle_timeout": null,
+      "host": "127.0.0.1",
+      "port": 6653,
+      "ports": 8,
+      "x": 630,
+      "y": 95
+    }
+  ],
+  "control_links": [
+    {
+      "controller": "c0",
+      "c_port": 1,
+      "switch": "s1"
+    },
+    {
+      "controller": "c0",
+      "c_port": 2,
+      "switch": "s2"
+    },
+    {
+      "controller": "c0",
+      "c_port": 3,
+      "switch": "s4"
+    },
+    {
+      "controller": "c0",
+      "c_port": 4,
+      "switch": "s3"
+    }
+  ]
+}

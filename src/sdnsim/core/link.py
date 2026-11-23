@@ -58,6 +58,7 @@ class Link:
     def transmit(self, sender, pkt):
         node, port = self.peer[sender]
         stats = self.stats[sender]
+        
         if self.bandwidth is None:
             wait = tx_time = 0.0                  # giữ đúng giá trị cũ: chỉ có `delay`
         else:

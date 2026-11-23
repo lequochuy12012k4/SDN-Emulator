@@ -30,7 +30,7 @@ from os_ken.lib.packet import ethernet, packet
 from os_ken.ofproto import ofproto_v1_3
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=True)
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 class LearningSwitch(app_manager.OSKenApp):
     """Học MAC theo từng switch; flow match in_port + eth_dst + eth_src (như simple_switch_13)."""

@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>SDN Emulator — Desktop Studio</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #0f172a; background: #f1f5f9; height: 100vh; display: flex; flex-direction: column; overflow: hidden; user-select: none; }
+
+    .toolbar { background: #1e293b; color: #f8fafc; padding: 8px 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid #334155; }
+    .brand { font-weight: 700; font-size: 15px; margin-right: 6px; color: #38bdf8; }
+    .palette-chip { padding: 6px 11px; border-radius: 6px; border: 1px dashed #64748b; background: #0f172a; color: #f8fafc; cursor: grab; font-size: 13px; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+    .palette-chip:hover { border-color: #38bdf8; background: #1e293b; }
+    .palette-chip.ctrl { border-color: #a78bfa; color: #ddd6fe; }
+    .palette-chip.sw { border-color: #60a5fa; color: #bfdbfe; }
+    .palette-chip.host { border-color: #34d399; color: #a7f3d0; }
+
+    .btn { padding: 6px 11px; border-radius: 6px; border: 1px solid #475569; background: #334155; color: #f8fafc; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; gap: 5px; }
+    .btn:hover { background: #475569; }
+    .btn-primary { background: #2563eb; border-color: #2563eb; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-active { background: #ea580c; border-color: #f97316; color: #fff; font-weight: 600; }
+    .btn-web { background: #059669; border-color: #10b981; font-weight: 600; }
+    .btn-web:hover { background: #047857; }
+    .btn-danger { background: #dc2626; border-color: #ef4444; color: #fff; }
+    .sep { width: 1px; height: 22px; background: #475569; margin: 0 2px; }
+    .spacer { flex: 1; }
+    .status-pill { font-size: 12px; background: #0f172a; padding: 4px 10px; border-radius: 999px; border: 1px solid #334155; color: #cbd5e1; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-right: 5px; }
+
+    .stage { position: relative; flex: 1; overflow: hidden; background-color: #ffffff;
+      background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 24px 24px; }
+    svg#canvas { width: 100%; height: 100%; display: block; }
+    .hint-bar { position: absolute; bottom: 10px; left: 12px; background: rgba(15, 23, 42, 0.88); color: #f8fafc; padding: 6px 12px; border-radius: 6px; font-size: 12px; pointer-events: none; }
+
+    .popover { position: absolute; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.16); min-width: 215px; z-index: 40; padding: 5px; display: none; }
+    .popover-title { font-size: 11px; font-weight: 700; color: #64748b; padding: 5px 9px; border-bottom: 1px solid #e2e8f0; margin-bottom: 4px; text-transform: uppercase; }
+    .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: transparent; padding: 7px 10px; border-radius: 5px; font-size: 13px; cursor: pointer; color: #0f172a; }
+    .menu-item:hover { background: #eff6ff; color: #1d4ed8; }
+    .menu-item.danger:hover { background: #fef2f2; color: #dc2626; }
+
+    .port-grid { display: flex; flex-direction: column; gap: 4px; padding: 4px; max-height: 240px; overflow-y: auto; }
+    .port-btn { display: flex; justify-content: space-between; align-items: center; padding: 6px 9px; border: 1px solid #bfdbfe; background: #eff6ff; color: #1e3a8a; border-radius: 5px; cursor: pointer; font-size: 12.5px; font-weight: 600; }
+    .port-btn.of { border-color: #ddd6fe; background: #f5f3ff; color: #5b21b6; }
+    .port-btn.of:hover:not(:disabled) { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+    .port-btn:hover:not(:disabled) { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .port-btn:disabled { background: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; cursor: not-allowed; font-weight: 400; }
+    .link-params { border-top: 1px solid #e2e8f0; margin-top: 6px; padding: 6px 4px 2px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11.5px; }
+    .link-params label { display: flex; flex-direction: column; gap: 2px; color: #475569; }
+    .link-params input { padding: 3px 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; width: 100%; }
+
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: none; align-items: center; justify-content: center; z-index: 60; }
+    .modal { background: #fff; border-radius: 10px; width: 440px; max-width: 94vw; box-shadow: 0 20px 40px rgba(0,0,0,0.25); overflow: hidden; }
+    .modal.wide { width: 720px; }
+    .modal-head { background: #1e293b; color: #f8fafc; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 14px; }
+    .modal-close { background: transparent; border: none; color: #cbd5e1; font-size: 18px; cursor: pointer; }
+    .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; max-height: 75vh; overflow-y: auto; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-weight: 600; color: #334155; font-size: 12.5px; }
+    .field input, .field select { padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+    .modal-foot { padding: 10px 14px; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 8px; }
+
+    .port-summary { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+    .port-summary-title { font-weight: 700; color: #475569; margin-bottom: 6px; }
+    .port-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+    .p-badge { padding: 3px 7px; border-radius: 4px; font-size: 11.5px; background: #e2e8f0; color: #475569; }
+    .p-badge.used { background: #dbeafe; color: #1e3a8a; font-weight: 600; }
+    .p-badge.ctrl { background: #ede9fe; color: #5b21b6; font-weight: 600; }
+
+    .console-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: #f8fafc; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .term { background: #0b1120; color: #e2e8f0; font-family: Consolas, "Courier New", monospace; font-size: 12.5px; height: 300px; overflow-y: auto; padding: 10px; border-radius: 6px; user-select: text; line-height: 1.45; }
+    .term-line { white-space: pre-wrap; word-break: break-word; }
+    .lvl-PACKET_IN { color: #38bdf8; }
+    .lvl-FLOW_MOD { color: #4ade80; }
+    .lvl-PACKET_OUT { color: #fbbf24; }
+    .lvl-EXPIRED { color: #fb7185; }
+    .lvl-OPENFLOW { color: #c084fc; }
+    .lvl-ICMP { color: #34d399; }
+    .lvl-ERROR { color: #f87171; }
+    .cmd-row { display: flex; gap: 6px; align-items: center; background: #0f172a; padding: 6px 10px; border-radius: 6px; }
+    .cmd-prompt { color: #38bdf8; font-family: Consolas, monospace; font-size: 13px; font-weight: 700; }
+    .cmd-input { flex: 1; background: transparent; border: none; outline: none; color: #f8fafc; font-family: Consolas, monospace; font-size: 13px; }
+
+    .link-del-btn { cursor: pointer; }
+    .link-group .link-del-wrap { opacity: 0; transition: opacity 0.12s; pointer-events: none; }
+    .link-group:hover .link-del-wrap { opacity: 1; pointer-events: auto; }
+    .link-group:hover .link-line { stroke: #ef4444 !important; stroke-width: 3.5 !important; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="brand">SDN Studio</span>
+    <div class="palette-chip host" draggable="true" data-kind="host" id="chipHost" title="Bấm hoặc kéo thả vào vùng vẽ">+ Host</div>
+    <div class="palette-chip sw" draggable="true" data-kind="sw" id="chipSwitch" title="Bấm hoặc kéo thả vào vùng vẽ">+ Switch</div>
+    <div class="palette-chip ctrl" draggable="true" data-kind="ctrl" id="chipCtrl" title="Bấm hoặc kéo thả vào vùng vẽ">+ Controller</div>
+    <button class="btn" id="btnLinkMode">🔗 Nối Link</button>
+    <div class="sep"></div>
+    <button class="btn" id="btnOpen">📂 Mở JSON</button>
+    <button class="btn" id="btnSave">💾 Lưu JSON</button>
+    <button class="btn" id="btnClear">🗑️ Xóa trắng</button>
+    <div class="sep"></div>
+    <button class="btn" id="btnTzsp" title="Phát gói trực tiếp qua UDP 37008 cho Wireshark">📡 Wireshark Live</button>
+    <button class="btn" id="btnPcap" title="Lưu toàn bộ gói đã bắt ra file .pcap">📥 Xuất .pcap (<span id="capCount">0</span>)</button>
+    <button class="btn" id="btnCapClear" title="Xóa bộ đệm gói đang bắt">🧹</button>
+    <div class="spacer"></div>
+    <span class="status-pill"><span class="dot"></span>Web: <b id="webUrlText">http://127.0.0.1:8000/</b> | t = <b id="simTime">0.00s</b></span>
+    <button class="btn btn-web" id="btnOpenWeb">🌐 Mở Web Dashboard</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <svg id="canvas"></svg>
+    <div class="hint-bar" id="hintBar"></div>
+    <div class="popover" id="ctxMenu"></div>
+    <div class="popover" id="portPicker" style="width: 255px;"></div>
+  </div>
+
+  <div class="modal-backdrop" id="editModalWrap">
+    <div class="modal">
+      <div class="modal-head">
+        <span id="editModalTitle">Cấu hình</span>
+        <button class="modal-close" onclick="closeEditModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="editModalBody"></div>
+      <div class="modal-foot">
+        <button class="btn" style="background:#e2e8f0;color:#0f172a;border-color:#cbd5e1;" onclick="closeEditModal()">Hủy</button>
+        <button class="btn btn-primary" id="editModalSave">Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="hostConsoleWrap">
+    <div class="modal wide">
+      <div class="modal-head">
+        <span id="hostConsoleTitle">Host Console</span>
+        <button class="modal-close" onclick="closeHostConsole()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="console-bar">
+          <span>Ping nhanh tới:</span>
+          <select id="hcTarget"></select>
+          <span>Số gói:</span>
+          <input type="number" id="hcCount" value="1" min="1" max="50" style="width:65px;padding:4px 6px;">
+          <button class="btn btn-primary" id="hcQuickPing">Ping</button>
+          <button class="btn" style="background:#0f172a;" id="hcPingAll">Ping All</button>
+          <button class="btn" style="background:#475569;" id="hcClear">Clear</button>
+        </div>
+        <div class="term" id="hcTerm"></div>
+        <div class="cmd-row">
+          <span class="cmd-prompt" id="hcPrompt">h1#</span>
+          <input class="cmd-input" id="hcInput" placeholder="Nhập lệnh: ping h2 -c 3 | pingall | arp | ifconfig | help">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="ctrlConsoleWrap">
+    <div class="modal wide">
+      <div class="modal-head">
+        <span id="ctrlConsoleTitle">Controller Console — Logging</span>
+        <button class="modal-close" onclick="closeCtrlConsole()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="console-bar">
+          <input id="ccFilter" placeholder="Lọc log (VD: c0, s1, FLOW_MOD, PACKET_IN)..." style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+          <button class="btn" style="background:#334155;" id="ccPauseBtn">Tạm dừng</button>
+          <button class="btn" style="background:#475569;" id="ccClearBtn">Xóa log</button>
+          <button class="btn btn-primary" id="ccOskenStart" style="display:none;">Chạy os-ken</button>
+          <button class="btn btn-danger" id="ccOskenStop" style="display:none;">Dừng os-ken</button>
+        </div>
+        <div class="term" id="ccTerm"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const svg = document.getElementById("canvas");
+    const stage = document.getElementById("stage");
+    const ctxMenu = document.getElementById("ctxMenu");
+    const portPicker = document.getElementById("portPicker");
+
+    let spec = { hosts: [], switches: [], links: [], controllers: [], control_links: [] };
+    let oskenRunning = false;
+    let liveSnap = null;
+
+    let selectedNode = null;
+    let linkMode = false;
+    let linkDraft = null;
+    let mousePos = { x: 0, y: 0 };
+    let dragState = null;
+
+    let activeHostConsole = null;
+    let hostLocalHistory = {};
+    let allLogs = [];
+    let ccOpen = false;
+    let ccCtrlName = null;
+    let ccPaused = false;
+
+    const webUrl = `${location.protocol}//${location.host}/`;
+    document.getElementById("webUrlText").textContent = webUrl;
+
+    // Chặn menu chuột phải mặc định trên vùng canvas (giữ lại ở ô nhập & console để copy/paste)
+    document.addEventListener("contextmenu", e => {
+      if (!e.target.closest(".term, input, select, textarea")) {
+        e.preventDefault();
+      }
+    });
+
+    async function api(url, method = "GET", body = null) {
+      const opts = { method, headers: {} };
+      if (body !== null) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const r = await fetch(url, opts);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Lỗi máy chủ");
+      return data;
+    }
+
+    async function loadInitial() {
+      const data = await api("/api/topology");
+      spec = data.spec;
+      oskenRunning = data.osken_running;
+      render();
+    }
+
+    async function commitSpec(newSpec) {
+      const res = await api("/api/topology", "PUT", newSpec);
+      spec = res.spec;
+      liveSnap = res.snapshot;
+      if (selectedNode && !findNode(selectedNode)) selectedNode = null;
+      render();
+    }
+
+    function cloneSpec() {
+      return JSON.parse(JSON.stringify(spec));
+    }
+
+    function findNode(name) {
+      const c = (spec.controllers || []).find(x => x.name === name);
+      if (c) return { kind: "ctrl", obj: c };
+      const h = (spec.hosts || []).find(x => x.name === name);
+      if (h) return { kind: "host", obj: h };
+      const s = (spec.switches || []).find(x => x.name === name);
+      if (s) return { kind: "sw", obj: s };
+      return null;
+    }
+
+    function usedPortsOf(name) {
+      const map = {};
+      const node = findNode(name);
+      if (!node) return map;
+      if (node.kind === "ctrl") {
+        for (const cl of (spec.control_links || [])) {
+          if (cl.controller === name) map[cl.c_port] = `${cl.switch}:OF`;
+        }
+        return map;
+      }
+      for (const l of (spec.links || [])) {
+        if (l.a === name) map[l.a_port] = `${l.b}:${l.b_port}`;
+        if (l.b === name) map[l.b_port] = `${l.a}:${l.a_port}`;
+      }
+      return map;
+    }
+
+    function switchCtrlLink(swName) {
+      return (spec.control_links || []).find(cl => cl.switch === swName) || null;
+    }
+
+    function allNames() {
+      return new Set([
+        ...(spec.hosts || []).map(x => x.name),
+        ...(spec.switches || []).map(x => x.name),
+        ...(spec.controllers || []).map(x => x.name),
+      ]);
+    }
+
+    function nextHostDefaults(x = null, y = null) {
+      let i = 1;
+      const names = allNames();
+      while (names.has(`h${i}`)) i++;
+      const macs = new Set(spec.hosts.map(h => h.mac.toLowerCase()));
+      const ips = new Set(spec.hosts.map(h => h.ip));
+      let m = 1;
+      const fmtMac = n => [5,4,3,2,1,0].map(k => ((n >> (8*k)) & 255).toString(16).padStart(2, "0")).join(":");
+      while (macs.has(fmtMac(m))) m++;
+      let p = 1;
+      while (ips.has(`10.0.${Math.floor((p-1)/254)}.${(p-1)%254 + 1}`)) p++;
+      return {
+        name: `h${i}`, mac: fmtMac(m),
+        ip: `10.0.${Math.floor((p-1)/254)}.${(p-1)%254 + 1}`,
+        ports: 1, x: x ?? (130 + (spec.hosts.length % 5) * 130), y: y ?? 340,
+      };
+    }
+
+    function nextSwitchDefaults(x = null, y = null) {
+      let i = 1;
+      const names = allNames();
+      while (names.has(`s${i}`)) i++;
+      return { name: `s${i}`, ports: 4, x: x ?? (200 + (spec.switches.length % 4) * 200), y: y ?? 190 };
+    }
+
+    function nextCtrlDefaults(x = null, y = null) {
+      let i = 0;
+      const names = allNames();
+      while (names.has(`c${i}`)) i++;
+      return {
+        name: `c${i}`, mode: "openflow", idle_timeout: null,
+        host: "127.0.0.1", port: 6653 + i, ports: 8,
+        x: x ?? (380 + (spec.controllers.length % 3) * 180), y: y ?? 55,
+      };
+    }
+
+    function closePopovers() {
+      ctxMenu.style.display = "none";
+      portPicker.style.display = "none";
+    }
+
+    function updateHintBar() {
+      const hint = document.getElementById("hintBar");
+      if (linkMode) {
+        hint.innerHTML = "<b>Chế độ nối Link:</b> Chuột trái chọn thiết bị nguồn → Chọn cổng → Chọn thiết bị đích → Chọn cổng (Esc để hủy).";
+        return;
+      }
+      if (selectedNode) {
+        const node = findNode(selectedNode);
+        if (node) {
+          let desc = "";
+          if (node.kind === "host") desc = `Host ${node.obj.name} (${node.obj.ip})`;
+          else if (node.kind === "sw") desc = `Switch ${node.obj.name} (${node.obj.ports} cổng)`;
+          else desc = `Controller ${node.obj.name} (${node.obj.mode}, ${node.obj.ports || 8} cổng)`;
+          hint.innerHTML = `Đang chọn: <b>${escHtml(desc)}</b> | <b>Nhấn đúp</b> để xem/sửa cấu hình | <b>Chuột phải</b> để mở tính năng | <b>Delete</b> để xóa.`;
+          return;
+        }
+      }
+      hint.innerHTML = "<b>Chuột trái:</b> Chọn / Kéo thả | <b>Nhấn đúp:</b> Xem & sửa cấu hình | <b>Chuột phải:</b> Mở danh mục tính năng | <b>Trỏ vào dây Link:</b> Xóa link.";
+    }
+
+    function setLinkMode(on) {
+      linkMode = on;
+      if (!on) linkDraft = null;
+      const btn = document.getElementById("btnLinkMode");
+      btn.classList.toggle("btn-active", on);
+      btn.textContent = on ? "✖ Hủy nối Link" : "🔗 Nối Link";
+      updateHintBar();
+      render();
+    }
+
+    // Kéo thả thiết bị mới từ thanh công cụ vào Canvas
+    document.querySelectorAll(".palette-chip").forEach(chip => {
+      chip.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", chip.dataset.kind));
+    });
+    stage.addEventListener("dragover", e => e.preventDefault());
+    stage.addEventListener("drop", e => {
+      e.preventDefault();
+      const kind = e.dataTransfer.getData("text/plain");
+      if (!kind) return;
+      const rect = svg.getBoundingClientRect();
+      const x = Math.max(65, Math.min(rect.width - 65, e.clientX - rect.left));
+      const y = Math.max(35, Math.min(rect.height - 35, e.clientY - rect.top));
+      if (kind === "host") openAddHost(x, y);
+      else if (kind === "sw") openAddSwitch(x, y);
+      else if (kind === "ctrl") openAddController(x, y);
+    });
+
+    function svgEl(tag, attrs = {}, text = null) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      if (text !== null) el.textContent = text;
+      return el;
+    }
+
+    // Cập nhật khung chọn độc lập mà không hủy các thẻ <g> (giúp dblclick luôn nhạy)
+    function updateSelectionVisual() {
+      const ring = document.getElementById("selRing");
+      if (!ring) return;
+      const node = selectedNode ? findNode(selectedNode) : null;
+      if (!node) {
+        ring.style.display = "none";
+      } else {
+        const w = node.kind === "ctrl" ? 138 : node.kind === "host" ? 110 : 98;
+        const h = node.kind === "ctrl" ? 58 : node.kind === "host" ? 60 : 58;
+        ring.setAttribute("x", node.obj.x - w / 2);
+        ring.setAttribute("y", node.obj.y - h / 2);
+        ring.setAttribute("width", w);
+        ring.setAttribute("height", h);
+        ring.style.display = "block";
+      }
+      updateHintBar();
+    }
+
+    function render() {
+      svg.innerHTML = "";
+
+      // Khung đánh dấu thiết bị đang chọn
+      const selRing = svgEl("rect", {
+        id: "selRing", x: 0, y: 0, width: 100, height: 60, rx: 12,
+        fill: "none", stroke: "#0ea5e9", "stroke-width": 2.6, "stroke-dasharray": "5,3",
+        style: "display: none; pointer-events: none;",
+      });
+      svg.appendChild(selRing);
+
+      // 1. Đường đang kéo nối Link
+      if (linkMode && linkDraft) {
+        const src = findNode(linkDraft.a);
+        if (src) {
+          svg.appendChild(svgEl("line", {
+            x1: src.obj.x, y1: src.obj.y, x2: mousePos.x, y2: mousePos.y,
+            stroke: linkDraft.isControl ? "#8b5cf6" : "#f97316",
+            "stroke-width": 2.5, "stroke-dasharray": "6,4",
+          }));
+        }
+      }
+
+      // 2. Đường nối Controller <-> Switch
+      (spec.control_links || []).forEach((cl, idx) => {
+        const c = findNode(cl.controller), s = findNode(cl.switch);
+        if (!c || !s) return;
+        const ax = c.obj.x, ay = c.obj.y, bx = s.obj.x, by = s.obj.y;
+        const isOk = c.obj.mode !== "openflow" || !liveSnap?.controller?.switches || liveSnap.controller.switches[cl.switch];
+
+        const grp = svgEl("g", { class: "link-group" });
+        grp.appendChild(svgEl("line", { x1: ax, y1: ay, x2: bx, y2: by, stroke: "transparent", "stroke-width": 16 }));
+        grp.appendChild(svgEl("line", {
+          class: "link-line", x1: ax, y1: ay, x2: bx, y2: by,
+          stroke: isOk ? "#8b5cf6" : "#ef4444", "stroke-width": 2.1, "stroke-dasharray": "6,4",
+        }));
+
+        const p1x = ax + (bx - ax) * 0.24, p1y = ay + (by - ay) * 0.24;
+        const p2x = ax + (bx - ax) * 0.76, p2y = ay + (by - ay) * 0.76;
+        grp.appendChild(svgEl("circle", { cx: p1x, cy: p1y, r: 10, fill: "#fff", stroke: "#8b5cf6", "stroke-width": 1.4 }));
+        grp.appendChild(svgEl("text", { x: p1x, y: p1y + 3.5, "font-size": 10, "font-weight": 700, "text-anchor": "middle", fill: "#5b21b6" }, `p${cl.c_port}`));
+        grp.appendChild(svgEl("circle", { cx: p2x, cy: p2y, r: 11, fill: "#fff", stroke: "#8b5cf6", "stroke-width": 1.4 }));
+        grp.appendChild(svgEl("text", { x: p2x, y: p2y + 3.5, "font-size": 9.5, "font-weight": 700, "text-anchor": "middle", fill: "#5b21b6" }, "OF"));
+
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const delWrap = svgEl("g", { class: "link-del-wrap link-del-btn" });
+        delWrap.appendChild(svgEl("circle", { cx: mx, cy: my, r: 12, fill: "#ef4444", stroke: "#fff", "stroke-width": 2 }));
+        delWrap.appendChild(svgEl("text", { x: mx, y: my + 4, "font-size": 12, "font-weight": 700, "text-anchor": "middle", fill: "#fff" }, "✕"));
+        delWrap.addEventListener("click", async e => {
+          e.stopPropagation();
+          const sCopy = cloneSpec();
+          sCopy.control_links.splice(idx, 1);
+          await commitSpec(sCopy);
+        });
+        grp.appendChild(delWrap);
+        svg.appendChild(grp);
+      });
+
+      // 3. Các đường Data Link
+      (spec.links || []).forEach((l, idx) => {
+        const a = findNode(l.a), b = findNode(l.b);
+        if (!a || !b) return;
+        const ax = a.obj.x, ay = a.obj.y, bx = b.obj.x, by = b.obj.y;
+
+        const grp = svgEl("g", { class: "link-group" });
+        grp.appendChild(svgEl("line", { x1: ax, y1: ay, x2: bx, y2: by, stroke: "transparent", "stroke-width": 16 }));
+        grp.appendChild(svgEl("line", { class: "link-line", x1: ax, y1: ay, x2: bx, y2: by, stroke: "#64748b", "stroke-width": 2.5 }));
+
+        const p1x = ax + (bx - ax) * 0.24, p1y = ay + (by - ay) * 0.24;
+        const p2x = ax + (bx - ax) * 0.76, p2y = ay + (by - ay) * 0.76;
+        grp.appendChild(svgEl("circle", { cx: p1x, cy: p1y, r: 10, fill: "#fff", stroke: "#3b82f6", "stroke-width": 1.4 }));
+        grp.appendChild(svgEl("text", { x: p1x, y: p1y + 3.5, "font-size": 10, "font-weight": 700, "text-anchor": "middle", fill: "#1e3a8a" }, `p${l.a_port}`));
+        grp.appendChild(svgEl("circle", { cx: p2x, cy: p2y, r: 10, fill: "#fff", stroke: "#3b82f6", "stroke-width": 1.4 }));
+        grp.appendChild(svgEl("text", { x: p2x, y: p2y + 3.5, "font-size": 10, "font-weight": 700, "text-anchor": "middle", fill: "#1e3a8a" }, `p${l.b_port}`));
+
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        grp.appendChild(svgEl("text", {
+          x: mx, y: my - 9, "font-size": 10.5, "font-weight": 600, "text-anchor": "middle",
+          fill: "#334155", "paint-order": "stroke", stroke: "#fff", "stroke-width": 4,
+        }, `${+(l.delay * 1000).toFixed(1)}ms`));
+
+        const delWrap = svgEl("g", { class: "link-del-wrap link-del-btn" });
+        delWrap.appendChild(svgEl("circle", { cx: mx, cy: my, r: 12, fill: "#ef4444", stroke: "#fff", "stroke-width": 2 }));
+        delWrap.appendChild(svgEl("text", { x: mx, y: my + 4, "font-size": 12, "font-weight": 700, "text-anchor": "middle", fill: "#fff" }, "✕"));
+        delWrap.addEventListener("click", async e => {
+          e.stopPropagation();
+          const sCopy = cloneSpec();
+          sCopy.links.splice(idx, 1);
+          await commitSpec(sCopy);
+        });
+        grp.appendChild(delWrap);
+        svg.appendChild(grp);
+      });
+
+      // 4. Vẽ Controllers
+      for (const ctrl of (spec.controllers || [])) {
+        const usedC = Object.keys(usedPortsOf(ctrl.name)).length;
+        drawNode("ctrl", ctrl, g => {
+          const isSrc = linkDraft && linkDraft.a === ctrl.name;
+          const modeTxt = `os-ken :${ctrl.port}`;
+          g.appendChild(svgEl("rect", {
+            x: -64, y: -24, width: 128, height: 48, rx: 10,
+            fill: "#6d28d9", stroke: isSrc ? "#f97316" : "#4c1d95", "stroke-width": isSrc ? 3 : 1.6,
+          }));
+          g.appendChild(svgEl("text", { x: 0, y: -3, "font-size": 13, "font-weight": 700, "text-anchor": "middle", fill: "#fff" }, ctrl.name));
+          g.appendChild(svgEl("text", { x: 0, y: 14, "font-size": 10.5, "text-anchor": "middle", fill: "#ede9fe" }, `${modeTxt} · ${usedC}/${ctrl.ports || 8}p`));
+        });
+      }
+
+      // 5. Vẽ Switches
+      for (const sw of (spec.switches || [])) {
+        const usedCount = Object.keys(usedPortsOf(sw.name)).length;
+        const hasCtrl = Boolean(switchCtrlLink(sw.name));
+        drawNode("sw", sw, g => {
+          const isSrc = linkDraft && linkDraft.a === sw.name;
+          g.appendChild(svgEl("rect", {
+            x: -44, y: -24, width: 88, height: 48, rx: 8,
+            fill: "#2563eb", stroke: isSrc ? "#f97316" : (hasCtrl ? "#1d4ed8" : "#ef4444"),
+            "stroke-width": isSrc ? 3 : (hasCtrl ? 1.5 : 2.5),
+          }));
+          g.appendChild(svgEl("text", { x: 0, y: -2, "font-size": 14, "font-weight": 700, "text-anchor": "middle", fill: "#fff" }, sw.name));
+          g.appendChild(svgEl("text", { x: 0, y: 15, "font-size": 10.5, "text-anchor": "middle", fill: hasCtrl ? "#dbeafe" : "#fecaca" },
+            hasCtrl ? `${usedCount}/${sw.ports} cổng` : "Chưa nối Ctrl"));
+        });
+      }
+
+      // 6. Vẽ Hosts
+      for (const h of (spec.hosts || [])) {
+        drawNode("host", h, g => {
+          const isSrc = linkDraft && linkDraft.a === h.name;
+          g.appendChild(svgEl("rect", {
+            x: -50, y: -25, width: 100, height: 50, rx: 8,
+            fill: "#eff6ff", stroke: isSrc ? "#f97316" : "#2563eb", "stroke-width": isSrc ? 3 : 1.8,
+          }));
+          g.appendChild(svgEl("text", { x: 0, y: -5, "font-size": 13, "font-weight": 700, "text-anchor": "middle", fill: "#1e3a8a" }, h.name));
+          g.appendChild(svgEl("text", { x: 0, y: 12, "font-size": 10.5, "text-anchor": "middle", fill: "#475569" }, h.ip || h.mac));
+        });
+      }
+
+      updateSelectionVisual();
+    }
+
+    function drawNode(kind, obj, buildInner) {
+      const g = svgEl("g", { transform: `translate(${obj.x}, ${obj.y})`, style: "cursor: pointer;" });
+      buildInner(g);
+
+      // Chuột trái: Chọn + Kéo thả (hoặc chọn cổng nếu đang bật Link Mode)
+      g.addEventListener("mousedown", e => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        closePopovers();
+        selectedNode = obj.name;
+        updateSelectionVisual();
+        dragState = {
+          kind, name: obj.name, obj,
+          startX: e.clientX, startY: e.clientY,
+          origX: obj.x, origY: obj.y, moved: false,
+        };
+      });
+
+      // Nhấn đúp chuột: Mở xem & sửa cấu hình thiết bị
+      g.addEventListener("dblclick", e => {
+        e.stopPropagation();
+        closePopovers();
+        if (linkMode) return;
+        if (kind === "host") openEditHost(obj.name);
+        else if (kind === "sw") openEditSwitch(obj.name);
+        else openEditController(obj.name);
+      });
+
+      // Chuột phải: Mở menu chức năng của thiết bị
+      g.addEventListener("contextmenu", e => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragState = null;
+        selectedNode = obj.name;
+        updateSelectionVisual();
+        const rect = stage.getBoundingClientRect();
+        openDeviceMenu(kind, obj.name, e.clientX - rect.left, e.clientY - rect.top);
+      });
+
+      svg.appendChild(g);
+    }
+
+    stage.addEventListener("mousemove", e => {
+      const rect = svg.getBoundingClientRect();
+      mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+      if (dragState) {
+        const dx = e.clientX - dragState.startX;
+        const dy = e.clientY - dragState.startY;
+        if (Math.hypot(dx, dy) >= 5) dragState.moved = true;
+        if (dragState.moved) {
+          dragState.obj.x = Math.max(60, Math.min(rect.width - 60, dragState.origX + dx));
+          dragState.obj.y = Math.max(35, Math.min(rect.height - 35, dragState.origY + dy));
+          render();
+        }
+      } else if (linkMode && linkDraft) {
+        render();
+      }
+    });
+
+    window.addEventListener("mouseup", async e => {
+      if (!dragState) return;
+      const ds = dragState;
+      dragState = null;
+
+      if (ds.moved) {
+        await api("/api/topology/positions", "PATCH", { [ds.name]: { x: ds.obj.x, y: ds.obj.y } });
+        return;
+      }
+
+      if (linkMode) {
+        const rect = stage.getBoundingClientRect();
+        openPortPicker(ds.name, e.clientX - rect.left, e.clientY - rect.top);
+      }
+    });
+
+    // Nhấn ra vùng trống: đóng menu & bỏ chọn
+    svg.addEventListener("mousedown", e => {
+      if (e.button === 0) {
+        closePopovers();
+        selectedNode = null;
+        updateSelectionVisual();
+      } else if (e.button === 2) {
+        closePopovers();
+      }
+    });
+
+    // Phím Esc và Delete
+    window.addEventListener("keydown", async e => {
+      if (e.key === "Escape") {
+        closePopovers();
+        if (linkMode) setLinkMode(false);
+        return;
+      }
+      if (e.key === "Delete" && selectedNode) {
+        const anyModalOpen = ["editModalWrap", "hostConsoleWrap", "ctrlConsoleWrap"]
+          .some(id => document.getElementById(id).style.display === "flex");
+        if (anyModalOpen || document.activeElement?.tagName === "INPUT") return;
+        const node = findNode(selectedNode);
+        if (node && confirm(`Xóa thiết bị ${selectedNode}?`)) {
+          await deleteDevice(node.kind, selectedNode);
+        }
+      }
+    });
+
+    function showPopover(el, x, y) {
+      el.style.display = "block";
+      const maxX = stage.clientWidth - el.offsetWidth - 10;
+      const maxY = stage.clientHeight - el.offsetHeight - 10;
+      el.style.left = Math.max(8, Math.min(maxX, x)) + "px";
+      el.style.top = Math.max(8, Math.min(maxY, y)) + "px";
+    }
+
+    function openDeviceMenu(kind, name, px, py) {
+      closePopovers();
+      let html = `<div class="popover-title">${kind === "host" ? "Host" : kind === "sw" ? "Switch" : "Controller"}: ${name}</div>`;
+      if (kind === "host") {
+        html += `<button class="menu-item" onclick="openHostConsole('${name}')">💻 Mở Console (Ping)</button>`;
+        html += `<button class="menu-item" onclick="openEditHost('${name}')">✏️ Xem / Sửa cấu hình</button>`;
+        html += `<button class="menu-item" onclick="startLinkFrom('${name}', ${px}, ${py})">🔗 Nối Link từ Host</button>`;
+        html += `<button class="menu-item danger" onclick="deleteDevice('host', '${name}')">🗑️ Xóa Host</button>`;
+      } else if (kind === "sw") {
+        html += `<button class="menu-item" onclick="openEditSwitch('${name}')">✏️ Xem / Sửa cấu hình & Cổng</button>`;
+        html += `<button class="menu-item" onclick="startLinkFrom('${name}', ${px}, ${py})">🔗 Nối Link (Switch / Ctrl)</button>`;
+        html += `<button class="menu-item danger" onclick="deleteDevice('sw', '${name}')">🗑️ Xóa Switch</button>`;
+      } else {
+        html += `<button class="menu-item" onclick="openCtrlConsole('${name}')">🖥️ Mở Console (Xem Logging)</button>`;
+        html += `<button class="menu-item" onclick="openEditController('${name}')">⚙️ Xem / Sửa cấu hình & Cổng</button>`;
+        html += `<button class="menu-item" onclick="startLinkFrom('${name}', ${px}, ${py})">🔗 Nối Link tới Switch</button>`;
+        html += `<button class="menu-item danger" onclick="deleteDevice('ctrl', '${name}')">🗑️ Xóa Controller</button>`;
+      }
+      ctxMenu.innerHTML = html;
+      showPopover(ctxMenu, px + 8, py + 8);
+    }
+
+    function startLinkFrom(name, px, py) {
+      closePopovers();
+      setLinkMode(true);
+      linkDraft = null;
+      openPortPicker(name, px, py);
+    }
+
+    function openPortPicker(nodeName, px, py) {
+      closePopovers();
+      if (linkDraft && linkDraft.a === nodeName) {
+        alert("Hãy chọn một thiết bị ĐÍCH khác với thiết bị nguồn!");
+        return;
+      }
+      const node = findNode(nodeName);
+      if (!node) return;
+
+      const isTarget = Boolean(linkDraft);
+      if (isTarget) {
+        if (linkDraft.kind === "ctrl" && node.kind !== "sw") {
+          alert("Controller chỉ có thể nối tới Switch!");
+          return;
+        }
+        if (linkDraft.isControl && node.kind !== "ctrl") {
+          alert("Cổng Control (OF) của Switch chỉ có thể nối tới Controller!");
+          return;
+        }
+        if (!linkDraft.isControl && linkDraft.kind !== "ctrl" && node.kind === "ctrl") {
+          alert("Để nối Switch với Controller, hãy chọn 'Cổng Control (OF)' trên Switch!");
+          return;
+        }
+      }
+
+      let html = `<div class="popover-title">${isTarget ? `Chọn cổng đích (${nodeName})` : `Chọn cổng nguồn (${nodeName})`}</div>`;
+      html += `<div class="port-grid">`;
+
+      if (node.kind === "ctrl") {
+        const totalPorts = node.obj.ports || 8;
+        const used = usedPortsOf(nodeName);
+        for (let p = 1; p <= totalPorts; p++) {
+          const peer = used[p];
+          html += `<button class="port-btn of" ${peer ? "disabled" : ""} onclick="selectPort('${nodeName}', ${p}, true)">
+            <span>Cổng Control ${p}</span>
+            <span>${peer ? `Đã nối → ${peer}` : "Trống"}</span>
+          </button>`;
+        }
+      } else if (node.kind === "sw") {
+        const curCl = switchCtrlLink(nodeName);
+        const showOfOnly = isTarget && linkDraft.kind === "ctrl";
+        const showDataOnly = isTarget && linkDraft.kind !== "ctrl";
+
+        if (!showDataOnly) {
+          html += `<button class="port-btn of" ${curCl ? "disabled" : ""} onclick="selectPort('${nodeName}', 0, true)">
+            <span>Cổng Control (OF)</span>
+            <span>${curCl ? `Đã nối → ${curCl.controller}:${curCl.c_port}` : "Trống"}</span>
+          </button>`;
+        }
+
+        if (!showOfOnly) {
+          const totalPorts = node.obj.ports || 4;
+          const used = usedPortsOf(nodeName);
+          for (let p = 1; p <= totalPorts; p++) {
+            const peer = used[p];
+            html += `<button class="port-btn" ${peer ? "disabled" : ""} onclick="selectPort('${nodeName}', ${p}, false)">
+              <span>Cổng ${p}</span>
+              <span>${peer ? `Đã nối → ${peer}` : "Trống"}</span>
+            </button>`;
+          }
+        }
+      } else {
+        const used = usedPortsOf(nodeName);
+        const peer = used[1];
+        html += `<button class="port-btn" ${peer ? "disabled" : ""} onclick="selectPort('${nodeName}', 1, false)">
+          <span>Cổng 1</span>
+          <span>${peer ? `Đã nối → ${peer}` : "Trống"}</span>
+        </button>`;
+      }
+
+      html += `</div>`;
+
+      if (isTarget && !linkDraft.isControl && node.kind !== "ctrl") {
+        html += `<div class="link-params">
+          <label>Độ trễ (ms)<input id="lpDelay" type="number" value="1" min="0.1" step="0.5"></label>
+          <label>Băng thông<input id="lpBw" placeholder="VD: 10Mbps"></label>
+          <label>Mất gói (%)<input id="lpLoss" type="number" value="0" min="0" max="100" step="1"></label>
+          <label>Hàng đợi<input id="lpQueue" type="number" placeholder="VD: 10"></label>
+        </div>`;
+      }
+
+      portPicker.innerHTML = html;
+      showPopover(portPicker, px + 10, py + 10);
+    }
+
+    async function selectPort(nodeName, port, isControl) {
+      const node = findNode(nodeName);
+      if (!linkDraft) {
+        linkDraft = { kind: node.kind, a: nodeName, a_port: port, isControl };
+        closePopovers();
+        render();
+        return;
+      }
+
+      const s = cloneSpec();
+      if (linkDraft.isControl || isControl) {
+        let ctrlName, cPort, swName;
+        if (linkDraft.kind === "ctrl") {
+          ctrlName = linkDraft.a; cPort = linkDraft.a_port; swName = nodeName;
+        } else {
+          ctrlName = nodeName; cPort = port; swName = linkDraft.a;
+        }
+        s.control_links.push({ controller: ctrlName, c_port: cPort, switch: swName });
+      } else {
+        const delayMs = parseFloat(document.getElementById("lpDelay")?.value || "1");
+        const bwRaw = document.getElementById("lpBw")?.value.trim() || "";
+        const lossPct = parseFloat(document.getElementById("lpLoss")?.value || "0");
+        const qRaw = document.getElementById("lpQueue")?.value.trim() || "";
+        s.links.push({
+          a: linkDraft.a, a_port: linkDraft.a_port, b: nodeName, b_port: port,
+          delay: Math.max(0.0001, delayMs / 1000.0),
+          bandwidth: bwRaw || null,
+          loss: Math.max(0, Math.min(1, lossPct / 100.0)),
+          queue_limit: qRaw ? parseInt(qRaw, 10) : null,
+        });
+      }
+
+      closePopovers();
+      linkDraft = null;
+      try {
+        await commitSpec(s);
+        setLinkMode(false);
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteDevice(kind, name) {
+      closePopovers();
+      const s = cloneSpec();
+      if (kind === "host") {
+        s.hosts = s.hosts.filter(h => h.name !== name);
+        s.links = s.links.filter(l => l.a !== name && l.b !== name);
+      } else if (kind === "sw") {
+        s.switches = s.switches.filter(sw => sw.name !== name);
+        s.links = s.links.filter(l => l.a !== name && l.b !== name);
+        s.control_links = s.control_links.filter(cl => cl.switch !== name);
+      } else {
+        s.controllers = s.controllers.filter(c => c.name !== name);
+        s.control_links = s.control_links.filter(cl => cl.controller !== name);
+      }
+      if (selectedNode === name) selectedNode = null;
+      await commitSpec(s);
+    }
+
+    function buildPortSummaryHtml(kind, name, totalPorts) {
+      const used = usedPortsOf(name);
+      let badges = "";
+      if (kind === "sw") {
+        const cl = switchCtrlLink(name);
+        badges += `<span class="p-badge ${cl ? "ctrl" : ""}">OF: ${cl ? `${cl.controller}:${cl.c_port}` : "Chưa nối"}</span>`;
+      }
+      for (let p = 1; p <= totalPorts; p++) {
+        const peer = used[p];
+        badges += `<span class="p-badge ${peer ? (kind === "ctrl" ? "ctrl" : "used") : ""}">p${p}: ${peer || "Trống"}</span>`;
+      }
+      return `<div class="port-summary"><div class="port-summary-title">Trạng thái cổng kết nối</div><div class="port-badges">${badges}</div></div>`;
+    }
+
+    // --- Modal Xem / Sửa Cấu Hình ---
+    let editOnSave = null;
+    function openEditModal(title, html, onSave) {
+      document.getElementById("editModalTitle").textContent = title;
+      document.getElementById("editModalBody").innerHTML = html;
+      editOnSave = onSave;
+      document.getElementById("editModalWrap").style.display = "flex";
+    }
+    function closeEditModal() {
+      document.getElementById("editModalWrap").style.display = "none";
+      editOnSave = null;
+    }
+    document.getElementById("editModalSave").onclick = async () => {
+      if (!editOnSave) return;
+      try {
+        await editOnSave();
+        closeEditModal();
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+
+    function openAddHost(x = null, y = null) {
+      const d = nextHostDefaults(x, y);
+      openEditModal("Thêm Host mới", `
+        <div class="field"><label>Tên Host</label><input id="fName" value="${d.name}"></div>
+        <div class="field"><label>Địa chỉ IP</label><input id="fIp" value="${d.ip}"></div>
+        <div class="field"><label>Địa chỉ MAC</label><input id="fMac" value="${d.mac}"></div>
+        <div class="field"><label>Số cổng kết nối</label><input value="1 (Host mặc định dùng cổng 1)" disabled></div>
+      `, async () => {
+        const s = cloneSpec();
+        s.hosts.push({
+          name: document.getElementById("fName").value.trim(),
+          ip: document.getElementById("fIp").value.trim(),
+          mac: document.getElementById("fMac").value.trim(),
+          ports: 1, x: d.x, y: d.y,
+        });
+        await commitSpec(s);
+      });
+    }
+
+    function openEditHost(name) {
+      closePopovers();
+      const h = spec.hosts.find(x => x.name === name);
+      openEditModal(`Cấu hình Host: ${name}`, `
+        <div class="field"><label>Tên Host</label><input id="fName" value="${h.name}"></div>
+        <div class="field"><label>Địa chỉ IP</label><input id="fIp" value="${h.ip}"></div>
+        <div class="field"><label>Địa chỉ MAC</label><input id="fMac" value="${h.mac}"></div>
+        <div class="field"><label>Số cổng kết nối</label><input value="1 (Host dùng cổng 1 trong sdnsim)" disabled></div>
+        ${buildPortSummaryHtml("host", name, 1)}
+      `, async () => {
+        const newName = document.getElementById("fName").value.trim();
+        const s = cloneSpec();
+        const target = s.hosts.find(x => x.name === name);
+        target.name = newName;
+        target.ip = document.getElementById("fIp").value.trim();
+        target.mac = document.getElementById("fMac").value.trim();
+        s.links.forEach(l => { if (l.a === name) l.a = newName; if (l.b === name) l.b = newName; });
+        if (selectedNode === name) selectedNode = newName;
+        await commitSpec(s);
+      });
+    }
+
+    function openAddSwitch(x = null, y = null) {
+      const d = nextSwitchDefaults(x, y);
+      openEditModal("Thêm Switch mới", `
+        <div class="field"><label>Tên Switch</label><input id="fName" value="${d.name}"></div>
+        <div class="field"><label>Số cổng dữ liệu (1–64)</label><input id="fPorts" type="number" min="1" max="64" value="${d.ports}"></div>
+      `, async () => {
+        const s = cloneSpec();
+        s.switches.push({
+          name: document.getElementById("fName").value.trim(),
+          ports: parseInt(document.getElementById("fPorts").value, 10),
+          x: d.x, y: d.y,
+        });
+        await commitSpec(s);
+      });
+    }
+
+    function openEditSwitch(name) {
+      closePopovers();
+      const sw = spec.switches.find(x => x.name === name);
+      openEditModal(`Cấu hình Switch: ${name}`, `
+        <div class="field"><label>Tên Switch</label><input id="fName" value="${sw.name}"></div>
+        <div class="field"><label>Số cổng dữ liệu (1–64)</label><input id="fPorts" type="number" min="1" max="64" value="${sw.ports}"></div>
+        ${buildPortSummaryHtml("sw", name, sw.ports)}
+      `, async () => {
+        const newName = document.getElementById("fName").value.trim();
+        const newPorts = parseInt(document.getElementById("fPorts").value, 10);
+        const s = cloneSpec();
+        const target = s.switches.find(x => x.name === name);
+        target.name = newName;
+        target.ports = newPorts;
+        s.links.forEach(l => { if (l.a === name) l.a = newName; if (l.b === name) l.b = newName; });
+        s.control_links.forEach(cl => { if (cl.switch === name) cl.switch = newName; });
+        if (selectedNode === name) selectedNode = newName;
+        await commitSpec(s);
+      });
+    }
+
+    function openAddController(x = null, y = null) {
+      const d = nextCtrlDefaults(x, y);
+      openEditModal("Thêm Controller mới", `
+        <div class="field"><label>Tên Controller</label><input id="fCtrlName" value="${d.name}"></div>
+        <div class="field"><label>Controller</label><input value="os-ken (OpenFlow 1.3)" disabled></div>
+        <div class="field"><label>Số cổng điều khiển (1–64)</label><input id="fCtrlPorts" type="number" min="1" max="64" value="${d.ports}"></div>
+        <div class="field"><label>idle_timeout (giây, để trống nếu không hết hạn)</label><input id="fCtrlIdle" type="number" step="0.5" min="0" value=""></div>
+        <div class="field"><label>Địa chỉ OpenFlow Host</label><input id="fCtrlHost" value="${d.host}"></div>
+        <div class="field"><label>Cổng OpenFlow TCP</label><input id="fCtrlPort" type="number" value="${d.port}"></div>
+      `, async () => {
+        const s = cloneSpec();
+        const idleVal = document.getElementById("fCtrlIdle").value.trim();
+        s.controllers.push({
+          name: document.getElementById("fCtrlName").value.trim(),
+          mode: "openflow",
+          ports: parseInt(document.getElementById("fCtrlPorts").value, 10),
+          idle_timeout: idleVal ? parseFloat(idleVal) : null,
+          host: document.getElementById("fCtrlHost").value.trim(),
+          port: parseInt(document.getElementById("fCtrlPort").value, 10),
+          x: d.x, y: d.y,
+        });
+        await commitSpec(s);
+      });
+    }
+
+    function openEditController(name) {
+      closePopovers();
+      const c = spec.controllers.find(x => x.name === name);
+      openEditModal(`Cấu hình Controller: ${name}`, `
+        <div class="field"><label>Tên Controller</label><input id="fCtrlName" value="${c.name}"></div>
+        <div class="field"><label>Controller</label><input value="os-ken (OpenFlow 1.3)" disabled></div>
+        <div class="field"><label>Số cổng điều khiển (1–64)</label><input id="fCtrlPorts" type="number" min="1" max="64" value="${c.ports || 8}"></div>
+        <div class="field"><label>idle_timeout (giây, để trống nếu không hết hạn)</label>
+          <input id="fCtrlIdle" type="number" step="0.5" min="0" value="${c.idle_timeout ?? ""}">
+        </div>
+        <div class="field"><label>Địa chỉ OpenFlow Host</label><input id="fCtrlHost" value="${c.host}"></div>
+        <div class="field"><label>Cổng OpenFlow TCP</label><input id="fCtrlPort" type="number" value="${c.port}"></div>
+        ${buildPortSummaryHtml("ctrl", name, c.ports || 8)}
+      `, async () => {
+        const newName = document.getElementById("fCtrlName").value.trim();
+        const s = cloneSpec();
+        const target = s.controllers.find(x => x.name === name);
+        const idleVal = document.getElementById("fCtrlIdle").value.trim();
+        target.name = newName;
+        target.mode = "openflow";
+        target.ports = parseInt(document.getElementById("fCtrlPorts").value, 10);
+        target.idle_timeout = idleVal ? parseFloat(idleVal) : null;
+        target.host = document.getElementById("fCtrlHost").value.trim();
+        target.port = parseInt(document.getElementById("fCtrlPort").value, 10);
+        s.control_links.forEach(cl => { if (cl.controller === name) cl.controller = newName; });
+        if (selectedNode === name) selectedNode = newName;
+        await commitSpec(s);
+      });
+    }
+
+    document.getElementById("chipHost").onclick = () => openAddHost();
+    document.getElementById("chipSwitch").onclick = () => openAddSwitch();
+    document.getElementById("chipCtrl").onclick = () => openAddController();
+    document.getElementById("btnLinkMode").onclick = () => setLinkMode(!linkMode);
+
+    document.getElementById("btnClear").onclick = async () => {
+      if (!confirm("Xóa toàn bộ thiết bị (Host, Switch, Controller) và Link hiện tại?")) return;
+      const s = cloneSpec();
+      s.hosts = []; s.switches = []; s.links = []; s.controllers = []; s.control_links = [];
+      selectedNode = null;
+      await commitSpec(s);
+    };
+
+    document.getElementById("btnOpenWeb").onclick = () => {
+      if (window.pywebview?.api?.open_url_in_browser) window.pywebview.api.open_url_in_browser(webUrl);
+      else window.open(webUrl, "_blank");
+    };
+
+    document.getElementById("btnOpen").onclick = async () => {
+      if (window.pywebview?.api?.open_topology_dialog) {
+        const picked = await window.pywebview.api.open_topology_dialog();
+        if (!picked) return;
+        try {
+          const res = await api("/api/topology/load", "POST", { path: picked });
+          spec = res.spec; selectedNode = null; render();
+        } catch (err) { alert(err.message); }
+      } else {
+        const list = await api("/api/topologies");
+        const name = prompt(`Nhập tên file trong topologies/:\n(${list.files.join(", ")})`, list.files[0] || "two_switch.json");
+        if (!name) return;
+        const res = await api("/api/topology/load", "POST", { path: name });
+        spec = res.spec; selectedNode = null; render();
+      }
+    };
+
+    document.getElementById("btnSave").onclick = async () => {
+      if (window.pywebview?.api?.save_topology_dialog) {
+        const savedPath = await window.pywebview.api.save_topology_dialog(JSON.stringify(spec, null, 2));
+        if (savedPath) alert("Đã lưu topology tại:\n" + savedPath);
+      } else {
+        const name = prompt("Nhập tên file lưu trong topologies/ (VD: my_topo.json):", "custom_topo.json");
+        if (!name) return;
+        const res = await api("/api/topology/save", "POST", { name });
+        alert("Đã lưu tại: " + res.path);
+      }
+    };
+
+    // --- Host Console ---
+    function appendHostLine(hostName, text, cls = "") {
+      (hostLocalHistory[hostName] ||= []).push({ text, cls });
+      if (activeHostConsole === hostName) renderHostTerm();
+    }
+    function escHtml(s) {
+      return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    }
+    function renderHostTerm() {
+      const term = document.getElementById("hcTerm");
+      const lines = hostLocalHistory[activeHostConsole] || [];
+      term.innerHTML = lines.map(l => `<div class="term-line ${l.cls}">${escHtml(l.text)}</div>`).join("");
+      term.scrollTop = term.scrollHeight;
+    }
+    function openHostConsole(hostName) {
+      closePopovers();
+      activeHostConsole = hostName;
+      const h = spec.hosts.find(x => x.name === hostName);
+      document.getElementById("hostConsoleTitle").textContent = `Host Console — ${hostName} (${h?.ip || ""} | ${h?.mac || ""})`;
+      document.getElementById("hcPrompt").textContent = `${hostName}#`;
+      const sel = document.getElementById("hcTarget");
+      sel.innerHTML = "";
+      for (const other of spec.hosts) {
+        if (other.name !== hostName) sel.add(new Option(`${other.name} (${other.ip})`, other.name));
+      }
+      if (!hostLocalHistory[hostName]) {
+        hostLocalHistory[hostName] = [{ text: `Console của ${hostName}. Gõ 'help' để xem danh sách lệnh.`, cls: "lvl-OPENFLOW" }];
+      }
+      renderHostTerm();
+      document.getElementById("hostConsoleWrap").style.display = "flex";
+      document.getElementById("hcInput").focus();
+    }
+    let liveTzsp = false;
+
+    async function refreshCaptureStatus() {
+      try {
+        const st = await api("/api/capture/status");
+        liveTzsp = st.live_tzsp;
+        document.getElementById("capCount").textContent = st.count;
+        const btn = document.getElementById("btnTzsp");
+        btn.classList.toggle("btn-active", liveTzsp);
+        btn.textContent = liveTzsp ? "📡 Wireshark Live: BẬT" : "📡 Wireshark Live";
+      } catch {}
+    }
+
+    document.getElementById("btnTzsp").onclick = async () => {
+      const res = await api("/api/capture/tzsp", "POST", { enabled: !liveTzsp });
+      await refreshCaptureStatus();
+      if (res.live_tzsp) {
+        alert(
+          "Đã BẬT phát gói Live sang Wireshark!\n\n" +
+          "Trên Wireshark:\n" +
+          "1. Chọn card: Adapter for loopback traffic capture\n" +
+          "2. Bắt đầu Capture; dùng display filter 'tzsp' (hoặc capture filter 'udp port 37008')\n" +
+          "3. Ping từ Host Console, mở gói TZSP → Ethernet → IPv4 → TCP\n" +
+          "4. Nếu chưa tự nhận dạng, Decode As TCP port 6653 → OpenFlow 1.3\n\n" +
+          "Không dùng filter 'icmp || arp' để tìm PACKET_IN/PACKET_OUT; filter đó chỉ hiện gói dữ liệu."
+        );
+      }
+    };
+
+    document.getElementById("btnPcap").onclick = async () => {
+      if (window.pywebview?.api?.save_pcap_dialog) {
+        const saved = await window.pywebview.api.save_pcap_dialog();
+        if (saved) alert("Đã lưu file Wireshark tại:\n" + saved);
+      } else {
+        window.location.href = "/api/capture/pcap";
+      }
+    };
+
+    document.getElementById("btnCapClear").onclick = async () => {
+      await api("/api/capture/clear", "POST");
+      await refreshCaptureStatus();
+    };
+    function closeHostConsole() {
+      activeHostConsole = null;
+      document.getElementById("hostConsoleWrap").style.display = "none";
+    }
+    async function runHostCmd(cmd) {
+      if (!activeHostConsole || !cmd.trim()) return;
+      const hName = activeHostConsole;
+      appendHostLine(hName, `${hName}# ${cmd}`);
+      try {
+        const res = await api(`/api/host/${hName}/exec`, "POST", { command: cmd });
+        if (res.clear) { hostLocalHistory[hName] = []; renderHostTerm(); return; }
+        for (const ln of res.lines) appendHostLine(hName, ln, res.ok ? "" : "lvl-ERROR");
+      } catch (err) {
+        appendHostLine(hName, `Lỗi: ${err.message}`, "lvl-ERROR");
+      }
+    }
+    document.getElementById("hcInput").addEventListener("keydown", e => {
+      if (e.key === "Enter") { const v = e.target.value; e.target.value = ""; runHostCmd(v); }
+    });
+    document.getElementById("hcQuickPing").onclick = () => {
+      const target = document.getElementById("hcTarget").value;
+      const count = document.getElementById("hcCount").value || "1";
+      if (!target) return alert("Chưa có host đích nào khác!");
+      runHostCmd(`ping ${target} -c ${count}`);
+    };
+    document.getElementById("hcPingAll").onclick = () => runHostCmd("pingall");
+    document.getElementById("hcClear").onclick = () => runHostCmd("clear");
+
+    // --- Controller Console ---
+    function openCtrlConsole(ctrlName) {
+      closePopovers();
+      ccOpen = true;
+      ccCtrlName = ctrlName;
+      updateCtrlConsoleButtons();
+      renderCtrlTerm();
+      document.getElementById("ctrlConsoleWrap").style.display = "flex";
+    }
+    function closeCtrlConsole() {
+      ccOpen = false;
+      ccCtrlName = null;
+      document.getElementById("ctrlConsoleWrap").style.display = "none";
+    }
+    function updateCtrlConsoleButtons() {
+      const c = spec.controllers.find(x => x.name === ccCtrlName) || spec.controllers[0];
+      const isLocal = c && ["127.0.0.1", "localhost"].includes(c.host);
+      document.getElementById("ctrlConsoleTitle").textContent =
+        c ? `Controller Console — ${c.name} (os-ken :${c.port})` : "Controller Console";
+      document.getElementById("ccOskenStart").style.display = isLocal && !oskenRunning ? "inline-flex" : "none";
+      document.getElementById("ccOskenStop").style.display = isLocal && oskenRunning ? "inline-flex" : "none";
+    }
+    function renderCtrlTerm() {
+      if (!ccOpen) return;
+      const term = document.getElementById("ccTerm");
+      const filter = document.getElementById("ccFilter").value.trim().toLowerCase();
+      const items = allLogs
+        .filter(e => e.category !== "host")
+        .filter(e => !ccCtrlName || e.source === ccCtrlName || e.source === "system" || e.level === "ERROR")
+        .filter(e => !filter || e.message.toLowerCase().includes(filter) || e.level.toLowerCase().includes(filter));
+      term.innerHTML = items.map(e => {
+        const t = e.sim_time != null ? `${e.sim_time.toFixed(3)}s` : e.ts;
+        return `<div class="term-line lvl-${e.level}">[${t}] [${e.level}] ${escHtml(e.message)}</div>`;
+      }).join("");
+      term.scrollTop = term.scrollHeight;
+    }
+    document.getElementById("ccFilter").addEventListener("input", renderCtrlTerm);
+    document.getElementById("ccPauseBtn").onclick = e => {
+      ccPaused = !ccPaused;
+      e.target.textContent = ccPaused ? "Tiếp tục" : "Tạm dừng";
+    };
+    document.getElementById("ccClearBtn").onclick = async () => {
+      await api("/api/logs/clear?category=controller", "POST");
+      allLogs = allLogs.filter(e => e.category === "host");
+      renderCtrlTerm();
+    };
+    document.getElementById("ccOskenStart").onclick = async () => {
+      try {
+        const q = ccCtrlName ? `?name=${encodeURIComponent(ccCtrlName)}` : "";
+        await api(`/api/controller/osken/start${q}`, "POST");
+        oskenRunning = true;
+        updateCtrlConsoleButtons();
+      } catch (err) { alert(err.message); }
+    };
+    document.getElementById("ccOskenStop").onclick = async () => {
+      await api("/api/controller/osken/stop", "POST");
+      oskenRunning = false;
+      updateCtrlConsoleButtons();
+    };
+
+    const wsSnap = new WebSocket(`ws://${location.host}/ws`);
+    wsSnap.onmessage = e => {
+      liveSnap = JSON.parse(e.data);
+      document.getElementById("simTime").textContent = liveSnap.time.toFixed(2) + " s";
+      refreshCaptureStatus();
+    };
+
+    const wsLogs = new WebSocket(`ws://${location.host}/ws/logs`);
+    wsLogs.onmessage = e => {
+      const entry = JSON.parse(e.data);
+      if (entry.category === "host") {
+        appendHostLine(entry.source, entry.message, `lvl-${entry.level}`);
+      } else {
+        allLogs.push(entry);
+        if (allLogs.length > 1000) allLogs.shift();
+        if (!ccPaused) renderCtrlTerm();
+      }
+    };
+
+    loadInitial();
+  </script>
+</body>
+</html>
