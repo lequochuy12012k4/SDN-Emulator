@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>SDN Emulator — Desktop Studio</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/assets/style/desktop.css">
+</head>
+<body>
+  <div class="toolbar">
+    <span class="brand">SDN Studio</span>
+
+    <div class="palette-chip host" draggable="true" data-kind="host" id="chipHost" title="Bấm hoặc kéo thả vào vùng vẽ">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+      </svg>
+      + Host
+    </div>
+    <div class="palette-chip sw" draggable="true" data-kind="sw" id="chipSwitch" title="Bấm hoặc kéo thả vào vùng vẽ">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="5" width="20" height="14" rx="3"/><path d="M7 10h10m-3-2 3 2-3 2M17 14H7m3-2-3 2 3 2"/>
+      </svg>
+      + Switch
+    </div>
+    <div class="palette-chip ctrl" draggable="true" data-kind="ctrl" id="chipCtrl" title="Bấm hoặc kéo thả vào vùng vẽ">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M12 3v6m0 6v6M3 12h6m6 0h6M5.6 5.6l4.2 4.2m4.4 4.4 4.2 4.2M18.4 5.6l-4.2 4.2m-4.4 4.4-4.2 4.2"/>
+      </svg>
+      + Controller
+    </div>
+
+    <button class="btn" id="btnLinkMode">🔗 Nối Link</button>
+    <div class="sep"></div>
+    <button class="btn" id="btnOpen">📂 Mở Topo</button>
+    <button class="btn" id="btnSave">💾 Lưu Topo</button>
+    <button class="btn" id="btnClear">🗑️ Xóa trắng</button>
+    <input type="file" id="browserFileOpen" accept=".json,application/json" style="display:none;">
+    <div class="sep"></div>
+    <button class="btn" id="btnTzsp" title="Phát gói trực tiếp qua UDP 37008 cho Wireshark">📡 Wireshark Live</button>
+    <button class="btn" id="btnPcap" title="Lưu toàn bộ gói đã bắt ra file .pcap">📥 .pcap (<span id="capCount">0</span>)</button>
+    <button class="btn" id="btnCapClear" title="Xóa bộ đệm gói đang bắt">🧹</button>
+
+    <div class="spacer"></div>
+
+    <div class="theme-switch" title="Chế độ hiển thị">
+      <span class="theme-lbl">Giao diện</span>
+      <button type="button" class="theme-btn" data-mode="light" title="Giao diện sáng">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+      </button>
+      <button type="button" class="theme-btn" data-mode="dark" title="Giao diện tối">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+      </button>
+      <button type="button" class="theme-btn" data-mode="system" title="Theo thiết bị">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <path d="M8 21h8M12 17v4"/>
+        </svg>
+      </button>
+    </div>
+
+    <span class="status-pill"><span class="dot"></span>t = <b id="simTime">0.00s</b></span>
+    <button class="btn btn-web" id="btnOpenWeb">🌐 Mở Web</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <svg id="canvas"></svg>
+    <div class="empty-state" id="emptyState">
+      <div class="empty-card">
+        <h3>Bắt đầu xây dựng Topology SDN</h3>
+        <p>Kéo thả <b>Host</b>, <b>Switch</b>, <b>Controller</b> từ thanh công cụ vào vùng vẽ này — hoặc bấm <b>📂 Mở Topo</b> để nạp từ file <code>.json</code>.</p>
+      </div>
+    </div>
+    <div class="hint-bar" id="hintBar"></div>
+    <div class="popover" id="ctxMenu"></div>
+    <div class="popover" id="portPicker" style="width: 255px;"></div>
+  </div>
+
+  <div class="modal-backdrop" id="editModalWrap">
+    <div class="modal">
+      <div class="modal-head">
+        <span id="editModalTitle">Cấu hình</span>
+        <button class="modal-close" onclick="closeEditModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="editModalBody"></div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeEditModal()">Hủy</button>
+        <button class="btn btn-primary" id="editModalSave">Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="hostConsoleWrap">
+    <div class="modal wide">
+      <div class="modal-head">
+        <span id="hostConsoleTitle">Host Console</span>
+        <button class="modal-close" onclick="closeHostConsole()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="console-bar">
+          <span>Ping nhanh tới:</span>
+          <select id="hcTarget"></select>
+          <span>Số gói:</span>
+          <input type="number" id="hcCount" value="1" min="1" max="50" style="width:65px;">
+          <button class="btn btn-primary" id="hcQuickPing">Ping</button>
+          <button class="btn" id="hcPingAll">Ping All</button>
+          <button class="btn" id="hcClear">Clear</button>
+        </div>
+        <div class="term" id="hcTerm"></div>
+        <div class="cmd-row">
+          <span class="cmd-prompt" id="hcPrompt">h1#</span>
+          <input class="cmd-input" id="hcInput" placeholder="Nhập lệnh: ping h2 -c 3 | pingall | arp | ifconfig | help">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="ctrlConsoleWrap">
+    <div class="modal wide">
+      <div class="modal-head">
+        <span id="ctrlConsoleTitle">Controller Console — Logging</span>
+        <button class="modal-close" onclick="closeCtrlConsole()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="console-bar">
+          <input id="ccFilter" placeholder="Lọc log (VD: c0, s1, FLOW_MOD, PACKET_IN)..." style="flex:1;">
+          <button class="btn" id="ccPauseBtn">Tạm dừng</button>
+          <button class="btn" id="ccClearBtn">Xóa log</button>
+          <button class="btn btn-primary" id="ccOskenStart" style="display:none;">Chạy os-ken</button>
+          <button class="btn btn-danger" id="ccOskenStop" style="display:none;">Dừng os-ken</button>
+        </div>
+        <div class="term" id="ccTerm"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/assets/script/desktop.js"></script>
+</body>
+</html>

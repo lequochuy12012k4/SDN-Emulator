@@ -163,19 +163,43 @@ class TopologyModel:
 
     # --- CRUD Switch ---
     def add_switch(
-        self, name: str | None = None, ports: int = 4, x: float = 280.0, y: float = 175.0
+        self,
+        name: str | None = None,
+        ports: int = 4,
+        x: float = 280.0,
+        y: float = 175.0,
+        delay: float = 0.0,
+        bandwidth: int | str | None = None,
+        queue_limit: int | None = None,
     ) -> dict[str, Any]:
         name = (name or self.next_switch_name()).strip()
         self._check_unique_name(name)
         ports = int(ports)
         if ports < 1 or ports > 64:
             raise ValueError("Số cổng Switch phải từ 1 đến 64")
-        sw = {"name": name, "ports": ports, "x": float(x), "y": float(y)}
+        delay = float(delay or 0.0)
+        if delay < 0:
+            raise ValueError("Độ trễ Switch phải >= 0")
+        sw = {
+            "name": name,
+            "ports": ports,
+            "delay": delay,
+            "bandwidth": bandwidth if bandwidth not in ("", 0) else None,
+            "queue_limit": int(queue_limit) if queue_limit not in (None, "", 0) else None,
+            "x": float(x),
+            "y": float(y),
+        }
         self.switches[name] = sw
         return deepcopy(sw)
 
     def update_switch(
-        self, old_name: str, name: str | None = None, ports: int | None = None
+        self,
+        old_name: str,
+        name: str | None = None,
+        ports: int | None = None,
+        delay: float | None = None,
+        bandwidth: int | str | None = ...,  # type: ignore[assignment]
+        queue_limit: int | None = ...,      # type: ignore[assignment]
     ) -> dict[str, Any]:
         if old_name not in self.switches:
             raise ValueError(f"Switch không tồn tại: {old_name!r}")
@@ -192,7 +216,20 @@ class TopologyModel:
                 f"Cổng {max(used.keys())} đang có kết nối, không thể giảm số cổng xuống {new_ports}"
             )
 
-        updated = {**cur, "name": new_name, "ports": new_ports}
+        new_delay = float(delay if delay is not None else cur.get("delay", 0.0))
+        if new_delay < 0:
+            raise ValueError("Độ trễ Switch phải >= 0")
+        new_bw = cur.get("bandwidth") if bandwidth is ... else (bandwidth if bandwidth not in ("", 0) else None)
+        new_ql = cur.get("queue_limit") if queue_limit is ... else (int(queue_limit) if queue_limit not in (None, "", 0) else None)
+
+        updated = {
+            **cur,
+            "name": new_name,
+            "ports": new_ports,
+            "delay": new_delay,
+            "bandwidth": new_bw,
+            "queue_limit": new_ql,
+        }
         if new_name != old_name:
             del self.switches[old_name]
             self.switches[new_name] = updated
@@ -442,6 +479,9 @@ class TopologyModel:
             m.switches[name] = {
                 "name": name,
                 "ports": int(s.get("ports", max(4, max_port.get(name, 4)))),
+                "delay": float(s.get("delay", 0.0)),
+                "bandwidth": s.get("bandwidth") if s.get("bandwidth") not in ("", 0) else None,
+                "queue_limit": s.get("queue_limit"),
                 "x": float(s.get("x", 200.0 + idx * 220.0)),
                 "y": float(s.get("y", 175.0)),
             }

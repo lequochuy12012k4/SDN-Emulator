@@ -450,6 +450,14 @@ class SimulationManager:
     def snapshot(self) -> dict[str, Any]:
         assert self.metrics is not None
         snap = self.metrics.snapshot()
+        for name, sw_spec in self.model.switches.items():
+            sw_snap = snap["switches"].get(name)
+            sw_obj = self.nodes.get(name)
+            if sw_snap is not None:
+                sw_snap["delay"] = getattr(sw_obj, "delay", sw_spec.get("delay", 0.0))
+                sw_snap["bandwidth"] = getattr(sw_obj, "bandwidth", None) or sw_spec.get("bandwidth")
+                sw_snap["dropped_packets"] = getattr(sw_obj, "dropped_packets", 0)
+
         snap["layout"] = {
             "controllers": list(self.model.controllers.values()),
             "control_links": list(self.model.control_links),
@@ -458,7 +466,13 @@ class SimulationManager:
                 for name, h in self.model.hosts.items()
             },
             "switches": {
-                name: {"x": s["x"], "y": s["y"], "ports": s["ports"]}
+                name: {
+                    "x": s["x"],
+                    "y": s["y"],
+                    "ports": s["ports"],
+                    "delay": s.get("delay", 0.0),
+                    "bandwidth": s.get("bandwidth"),
+                }
                 for name, s in self.model.switches.items()
             },
         }

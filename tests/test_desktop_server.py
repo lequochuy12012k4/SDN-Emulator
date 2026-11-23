@@ -49,6 +49,32 @@ def _all_switches_connected(snapshot):
     return bool(switches) and all(switches.values())
 
 
+def test_web_ui_paths_serve_templates_and_assets(tmp_path):
+    app = create_desktop_app(
+        topologies_dir=tmp_path / "topologies",
+        autorun=False,
+        autostart_osken=False,
+    )
+    with TestClient(app) as client:
+        web_page = client.get("/")
+        desktop_page = client.get("/desktop")
+
+        assert web_page.status_code == 200
+        assert "Web Dashboard" in web_page.text
+        assert desktop_page.status_code == 200
+        assert "Desktop Studio" in desktop_page.text
+
+        for path, content_type in (
+            ("/assets/style/index.css", "text/css"),
+            ("/assets/style/desktop.css", "text/css"),
+            ("/assets/script/index.js", "javascript"),
+            ("/assets/script/desktop.js", "javascript"),
+        ):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert content_type in response.headers["content-type"]
+
+
 def _openflow_types_from_pcap(data):
     message_types = []
     offset = 24
@@ -83,8 +109,8 @@ def test_desktop_and_web_sync_exact_topology_and_ping(tmp_path):
         desktop_page = client.get("/desktop")
         assert web_page.status_code == 200
         assert desktop_page.status_code == 200
-        assert web_page.text == desktop_page.text
-        assert 'id="btnLinkMode"' in web_page.text
+        assert "Web Dashboard" in web_page.text
+        assert "Desktop Studio" in desktop_page.text
         assert client.get("/api/topology").json()["osken_running"] is True
         _wait_for(client, _all_switches_connected)
 

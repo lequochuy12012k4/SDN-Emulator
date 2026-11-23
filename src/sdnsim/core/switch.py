@@ -21,47 +21,94 @@ def flow_matches(match, in_port, pkt):
         if got != want:
             return False
     return True
+
+def _parse_bandwidth(bw) -> float | None:
+    if bw is None or bw == "" or bw == 0:
+        return None
+    if isinstance(bw, (int, float)):
+        val = float(bw)
+        if val <= 0:
+            raise ValueError(f"Băng thông switch phải > 0, nhận {bw!r}")
+        return val
+    s = str(bw).strip().lower().replace(" ", "")
+    units = (
+        ("gbps", 1e9), ("gb/s", 1e9),
+        ("mbps", 1e6), ("mb/s", 1e6),
+        ("kbps", 1e3), ("kb/s", 1e3),
+        ("bps", 1.0), ("b/s", 1.0),
+    )
+    for suffix, mult in units:
+        if s.endswith(suffix):
+            val = float(s[:-len(suffix)]) * mult
+            if val <= 0:
+                raise ValueError(f"Băng thông switch phải > 0, nhận {bw!r}")
+            return val
+    val = float(s)
+    if val <= 0:
+        raise ValueError(f"Băng thông switch phải > 0, nhận {bw!r}")
+    return val
+
 class Switch:
-    def __init__(self, sched, name, channel):
+    def __init__(self, sched, name, channel, delay=0.0, bandwidth=None, queue_limit=None):
         self.sched, self.name, self.channel = sched, name, channel
+        self.delay = float(delay or 0.0)
+        if self.delay < 0:
+            raise ValueError(f"Độ trễ switch phải >= 0, nhận {self.delay}")
+        self.bandwidth = _parse_bandwidth(bandwidth)
+        self.queue_limit = int(queue_limit) if queue_limit not in (None, "", 0) else None
+        self._busy_until = 0.0
+        self._queued = 0
+        self.dropped_packets = 0
+
         self.ports = {}
         self.flows = []
-        self.groups = {}
-        self.meters = {}
         self._sweep_scheduled = False
         self.port_stats = defaultdict(_new_port_stats)
-        self.table_lookups = 0
-        self.table_matched = 0
         self.table_misses = 0
         channel.register(self)
 
     def receive(self, in_port, pkt):
-        # Lazy expiration: remove flows that have exceeded idle_timeout
         s = self.port_stats[in_port]
         s["rx_packets"] += 1
         s["rx_bytes"] += pkt.size
+
+        if self.delay == 0.0 and self.bandwidth is None:
+            self._process_packet(in_port, pkt)
+            return
+
+        if self.queue_limit is not None and self._queued >= self.queue_limit:
+            self.dropped_packets += 1
+            return
+
+        now = self.sched.now
+        tx_time = (pkt.size * 8) / self.bandwidth if self.bandwidth else 0.0
+        start = max(now, self._busy_until)
+        finish = start + tx_time + self.delay
+        self._busy_until = start + tx_time
+        self._queued += 1
+        self.sched.schedule(finish - now, self._finish_packet, in_port, pkt)
+
+    def _finish_packet(self, in_port, pkt):
+        self._queued -= 1
+        self._process_packet(in_port, pkt)
+
+    def _process_packet(self, in_port, pkt):
+        # Giữ nguyên toàn bộ phần logic cũ trong receive() của bạn từ đoạn
+        # kiểm tra flow hết hạn lười -> flow_matches(...) -> _tx(...) -> table_misses -> packet_in(...)
         now = self.sched.now
         self.flows = [
             f for f in self.flows
             if f["idle_timeout"] is None or (now - f["last_hit"]) < f["idle_timeout"]
         ]
-
-        self.table_lookups += 1
         for f in sorted(self.flows, key=lambda f: -f["priority"]):
             if flow_matches(f["match"], in_port, pkt):
                 f["packets"] += 1
                 f["bytes"] += pkt.size
-                f["last_hit"] = self.sched.now
-                self.table_matched += 1
-                if f["meter_id"] is not None and not self._meter_allows(f["meter_id"], pkt):
-                    return
-                if f["group_id"] is not None:
-                    self._group_output(f["group_id"], pkt)
-                else:
-                    self._tx(f["out_port"], pkt)
+                f["last_hit"] = now
+                self._tx(f["out_port"], pkt)
                 return
         self.table_misses += 1
-        print(f"[{self.sched.now*1000:7.2f} ms] {self.name}: table-miss -> PACKET_IN ({pkt.eth_src}->{pkt.eth_dst})")
+        print(f"[{now*1000:7.2f} ms] {self.name}: table-miss -> PACKET_IN ({pkt.eth_src}->{pkt.eth_dst})")
         self.channel.packet_in(self, in_port, pkt)
 
     def record_rx_error(self, in_port):

@@ -92,7 +92,14 @@ def build_network(
     for h in spec.get("hosts", []):
         add(Host(sched, h["name"], h["mac"], h.get("ip")))
     for s in spec.get("switches", []):
-        add(Switch(sched, s["name"], ch))
+        add(Switch(
+            sched,
+            s["name"],
+            ch,
+            delay=s.get("delay", 0.0),
+            bandwidth=s.get("bandwidth"),
+            queue_limit=s.get("queue_limit"),
+        ))
 
     def endpoint(name: str, port: int) -> Host | Switch:
         if name not in nodes:

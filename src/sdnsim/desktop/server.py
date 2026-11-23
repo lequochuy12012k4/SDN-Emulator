@@ -7,16 +7,16 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from sdnsim.desktop.sim import SimulationManager
 from sdnsim.topology.model import TopologyModel
-from fastapi.responses import FileResponse, Response
 
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
-INDEX_HTML = UI_DIR / "index.html"
-DESKTOP_HTML = UI_DIR / "desktop.html"
+INDEX_HTML = UI_DIR / "template" / "index.html"
+DESKTOP_HTML = UI_DIR / "template" / "desktop.html"
 
 
 class PingRequest(BaseModel):
@@ -98,15 +98,16 @@ def create_desktop_app(
     app = FastAPI(title="SDN Emulator Desktop + Web", lifespan=lifespan)
     app.state.sim = sim
     app.state.sched = sim.sched
+    app.mount("/assets", StaticFiles(directory=UI_DIR), name="assets")
 
     # --- Trang giao diện ---
     @app.get("/")
     def web_index():
-        return FileResponse(INDEX_HTML)
+        return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-store"})
 
     @app.get("/desktop")
     def desktop_index():
-        return FileResponse(DESKTOP_HTML)
+        return FileResponse(DESKTOP_HTML, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/health")
     def health():

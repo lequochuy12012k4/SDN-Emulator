@@ -29,47 +29,58 @@
       "mac": "00:02:00:00:00:02",
       "ip": "10.0.0.4",
       "ports": 1,
-      "x": 664,
-      "y": 530
+      "x": 729,
+      "y": 545
     }
   ],
   "switches": [
     {
       "name": "s1",
       "ports": 4,
+      "delay": 0,
+      "bandwidth": null,
+      "queue_limit": null,
       "x": 130,
       "y": 249
     },
     {
       "name": "s2",
       "ports": 4,
+      "delay": 0,
+      "bandwidth": null,
+      "queue_limit": null,
       "x": 426,
       "y": 271
     },
     {
       "name": "s3",
       "ports": 4,
+      "delay": 0,
+      "bandwidth": null,
+      "queue_limit": null,
       "x": 1038,
       "y": 272
     },
     {
       "name": "s4",
       "ports": 4,
+      "delay": 0,
+      "bandwidth": null,
+      "queue_limit": null,
       "x": 694,
       "y": 284
+    },
+    {
+      "name": "s5",
+      "ports": 4,
+      "delay": 0,
+      "bandwidth": null,
+      "queue_limit": null,
+      "x": 1473,
+      "y": 376
     }
   ],
   "links": [
-    {
-      "a": "h1",
-      "a_port": 1,
-      "b": "s1",
-      "b_port": 1,
-      "delay": 0.001,
-      "bandwidth": null,
-      "loss": 0,
-      "queue_limit": null
-    },
     {
       "a": "h2",
       "a_port": 1,
@@ -129,18 +140,38 @@
       "bandwidth": null,
       "loss": 0,
       "queue_limit": null
+    },
+    {
+      "a": "s1",
+      "a_port": 1,
+      "b": "h1",
+      "b_port": 1,
+      "delay": 0.01,
+      "bandwidth": "10Mbps",
+      "loss": 0.1,
+      "queue_limit": 10
     }
   ],
   "controllers": [
     {
       "name": "c0",
-      "mode": "internal",
+      "mode": "openflow",
       "idle_timeout": null,
       "host": "127.0.0.1",
       "port": 6653,
       "ports": 8,
       "x": 630,
       "y": 95
+    },
+    {
+      "name": "c1",
+      "mode": "openflow",
+      "idle_timeout": null,
+      "host": "127.0.0.1",
+      "port": 6654,
+      "ports": 8,
+      "x": 1565,
+      "y": 152
     }
   ],
   "control_links": [
@@ -163,6 +194,11 @@
       "controller": "c0",
       "c_port": 4,
       "switch": "s3"
+    },
+    {
+      "controller": "c1",
+      "c_port": 1,
+      "switch": "s5"
     }
   ]
 }

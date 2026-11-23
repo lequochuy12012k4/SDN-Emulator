@@ -14,6 +14,9 @@ class Metrics:
             if isinstance(node, Switch):
                 switches[name] = {
                     "table_misses": node.table_misses,
+                    "delay": getattr(node, "delay", 0.0),
+                    "bandwidth": getattr(node, "bandwidth", None),
+                    "dropped_packets": getattr(node, "dropped_packets", 0),
                     "ports": {p: dict(s) for p, s in node.port_stats.items()},
                     "flows": [{**f, "match": dict(f["match"])} for f in node.flows],
                 }
