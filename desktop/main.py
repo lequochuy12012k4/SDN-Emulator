@@ -33,7 +33,22 @@ def _bundle_root() -> Path:
 
 APP_ROOT = _app_root()
 BUNDLE_ROOT = _bundle_root()
-TOPOLOGIES_DIR = APP_ROOT / "topologies"
+
+def _writable_topologies_dir() -> Path:
+    candidate = APP_ROOT / "topologies"
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        probe = candidate / ".write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return candidate
+    except OSError:
+        fallback = Path.home() / "Documents" / "SDN-Emulator" / "topologies"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+TOPOLOGIES_DIR = _writable_topologies_dir()
 
 
 def _ensure_sample_topologies() -> None:
