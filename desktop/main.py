@@ -65,7 +65,7 @@ class DesktopBridge:
         )
         if not result:
             return None
-        return str(result[0])
+        return str(result[0] if isinstance(result, (list, tuple)) else result)
 
     def save_topology_dialog(self, content: str) -> str | None:
         if self._window is None:

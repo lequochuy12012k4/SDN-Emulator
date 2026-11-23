@@ -57,11 +57,7 @@ def create_desktop_app(
         spec = json.loads(initial_topology.read_text(encoding="utf-8"))
         model = TopologyModel.from_spec(spec)
     else:
-        default_json = topo_dir / "two_switch.json"
-        if default_json.exists():
-            model = TopologyModel.from_spec(json.loads(default_json.read_text(encoding="utf-8")))
-        else:
-            model = TopologyModel()
+        model = TopologyModel(with_default_controller=False)
 
     sim = SimulationManager(model, topo_dir, step=step, speed=speed)
     reload_lock = asyncio.Lock()

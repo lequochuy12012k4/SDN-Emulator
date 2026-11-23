@@ -79,8 +79,12 @@ def test_desktop_and_web_sync_exact_topology_and_ping(tmp_path):
         speed=20.0,
     )
     with TestClient(app) as client:
-        assert client.get("/desktop").status_code == 200
-        assert client.get("/").status_code == 200
+        web_page = client.get("/")
+        desktop_page = client.get("/desktop")
+        assert web_page.status_code == 200
+        assert desktop_page.status_code == 200
+        assert web_page.text == desktop_page.text
+        assert 'id="btnLinkMode"' in web_page.text
         assert client.get("/api/topology").json()["osken_running"] is True
         _wait_for(client, _all_switches_connected)
 

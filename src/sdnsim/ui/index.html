@@ -1,344 +1,476 @@
 <!doctype html>
 <html lang="vi">
-
 <head>
-    <meta charset="utf-8">
-    <title>SDN Emulator - Web Dashboard</title>
-    <style>
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 16px;
-            color: #1f2937;
-            background: #f9fafb;
-        }
+  <meta charset="utf-8">
+  <title>SDN Emulator — Web Dashboard</title>
+  <style>
+    :root {
+      --bg-app: #f1f5f9;
+      --bg-card: #ffffff;
+      --bg-sub: #f8fafc;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --grid-dot: #cbd5e1;
+      --link-line: #64748b;
+      --host-fill: #ffffff;
+      --host-stroke: #0ea5e9;
+      --sw-fill: #2563eb;
+      --ctrl-fill: #7c3aed;
+      --port-bg: #ffffff;
+      --shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+    }
+    html[data-resolved-theme="dark"] {
+      --bg-app: #0b1120;
+      --bg-card: #111827;
+      --bg-sub: #1e293b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border: #1e293b;
+      --border-strong: #334155;
+      --grid-dot: #1e293b;
+      --link-line: #94a3b8;
+      --host-fill: #172554;
+      --host-stroke: #38bdf8;
+      --sw-fill: #1d4ed8;
+      --ctrl-fill: #6d28d9;
+      --port-bg: #0f172a;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
 
-        h2 {
-            margin: 0 0 10px;
-        }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 18px 22px;
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg-app); color: var(--text);
+      transition: background 0.2s, color 0.2s;
+    }
 
-        .bar {
-            background: #fff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 10px 14px;
-            margin-bottom: 12px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            align-items: center;
-        }
+    .topbar {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 18px; margin-bottom: 14px; box-shadow: var(--shadow);
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    }
+    .title {
+      font-size: 17px; font-weight: 800; margin-right: 8px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .pill {
+      font-size: 12.5px; background: var(--bg-sub); border: 1px solid var(--border-strong);
+      padding: 5px 12px; border-radius: 999px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+    }
+    .pill b { color: var(--text); }
+    .spacer { flex: 1; }
 
-        .ping-bar {
-            background: #fff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 10px 14px;
-            margin-bottom: 12px;
-            display: inline-flex;
-            gap: 8px;
-            align-items: center;
-        }
+    .theme-switch {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 3px 4px 3px 10px; border-radius: 10px;
+      background: var(--bg-sub); border: 1px solid var(--border-strong);
+    }
+    .theme-lbl { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-right: 4px; }
+    .theme-switch .theme-btn {
+      width: 28px; height: 26px; padding: 0; border: none; border-radius: 7px;
+      background: transparent; color: var(--text-muted); cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s;
+    }
+    .theme-switch .theme-btn:hover { color: var(--text); background: rgba(148, 163, 184, 0.16); }
+    .theme-switch .theme-btn.active {
+      background: var(--bg-card); color: #2563eb; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    }
+    .theme-switch .theme-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 
-        select,
-        button {
-            padding: 5px 10px;
-            border-radius: 6px;
-            border: 1px solid #d1d5db;
-            font-size: 13px;
-        }
+    .ping-bar select {
+      padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border-strong);
+      background: var(--bg-sub); color: var(--text); font-size: 13px; cursor: pointer;
+    }
+    .ping-bar button.primary {
+      padding: 6px 13px; border-radius: 8px; border: 1px solid #2563eb;
+      background: #2563eb; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .ping-bar button.primary:hover { background: #1d4ed8; }
 
-        button {
-            background: #2563eb;
-            color: #fff;
-            border-color: #2563eb;
-            cursor: pointer;
-            font-weight: 500;
-        }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px 16px; margin-bottom: 14px; box-shadow: var(--shadow);
+    }
+    .card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+    .card-title { font-size: 14.5px; font-weight: 700; margin: 0; }
+    .ping-bar { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; }
 
-        button:hover {
-            background: #1d4ed8;
-        }
+    #topo {
+      border-radius: 10px; border: 1px solid var(--border); overflow-x: auto;
+      background-color: var(--bg-sub);
+      background-image: radial-gradient(var(--grid-dot) 1.1px, transparent 1.1px);
+      background-size: 22px 22px;
+    }
+    .empty-msg { padding: 48px 20px; text-align: center; color: var(--text-muted); font-size: 13.5px; }
 
-        #topo {
-            background: #fff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 8px;
-            margin-bottom: 14px;
-            overflow-x: auto;
-        }
-
-        table {
-            border-collapse: collapse;
-            margin: 6px 0 14px;
-            background: #fff;
-        }
-
-        th,
-        td {
-            border: 1px solid #d1d5db;
-            padding: 4px 10px;
-            text-align: right;
-            font-size: 13px;
-        }
-
-        th {
-            background: #f3f4f6;
-            text-align: center;
-        }
-
-        h3 {
-            margin: 16px 0 4px;
-            font-size: 15px;
-        }
-    </style>
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); gap: 14px; }
+    .sw-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(460px, 1.55fr);
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .sw-grid { grid-template-columns: 1fr; }
+    }
+    .sw-pane { min-width: 0; }
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      margin-top: 6px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12.6px; }
+    th, td {
+      border: 1px solid var(--border-strong);
+      padding: 7px 10px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    th {
+      background: var(--bg-sub);
+      color: var(--text-muted);
+      font-weight: 700;
+      text-align: center;
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border-top: none;
+    }
+    th:first-child, td:first-child { border-left: none; }
+    th:last-child, td:last-child { border-right: none; }
+    tr:last-child td { border-bottom: none; }
+    tr:not(:first-child):hover td { background: rgba(59, 130, 246, 0.06); }
+    table.td-left td:first-child { text-align: left; }
+    table.td-center td:first-child { text-align: center; font-weight: 600; }
+    h4 { margin: 4px 0 4px; font-size: 13px; color: var(--text-muted); }
+    .badge-sw { display: inline-block; padding: 2px 8px; border-radius: 6px; background: rgba(37,99,235,0.14); color: #3b82f6; font-weight: 700; font-size: 12px; }
+  </style>
 </head>
-
 <body>
-    <h2>SDN Emulator — Web Dashboard</h2>
-    <div class="bar">
-        <span>Kết nối: <b id="status">...</b></span>
-        <span>Controller: <b id="ctl">-</b></span>
-        <span>Giờ ảo: <b id="time">-</b></span>
-        <span>PACKET_IN: <b id="pin">-</b></span>
+  <div class="topbar">
+    <span class="title">SDN Emulator — Web Dashboard</span>
+    <span class="pill">Kết nối: <b id="status">...</b></span>
+    <span class="pill">Controller: <b id="ctl">-</b></span>
+    <span class="pill">Giờ ảo: <b id="time">0.00 s</b></span>
+    <span class="pill">PACKET_IN: <b id="pin">0</b></span>
+    <div class="spacer"></div>
+    <div class="theme-switch" title="Chế độ hiển thị">
+      <span class="theme-lbl">Giao diện</span>
+      <button type="button" class="theme-btn" data-mode="light" title="Giao diện sáng">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+      </button>
+      <button type="button" class="theme-btn" data-mode="dark" title="Giao diện tối">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+      </button>
+      <button type="button" class="theme-btn" data-mode="system" title="Theo thiết bị">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <path d="M8 21h8M12 17v4"/>
+        </svg>
+      </button>
     </div>
-    <div class="ping-bar">
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3 class="card-title">Topology đồng bộ trực tiếp</h3>
+      <div class="ping-bar">
         <span>Ping từ</span>
         <select id="src"></select>
         <span>tới</span>
         <select id="dst"></select>
-        <button id="go">Ping</button>
+        <button class="primary" id="go">Gửi Ping</button>
+      </div>
     </div>
-
     <div id="topo"></div>
-    <div id="links"></div>
-    <div id="hosts"></div>
-    <div id="switches"></div>
+  </div>
 
-    <script>
-        const $ = id => document.getElementById(id);
-        const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-        const row = cells => "<tr>" + cells.map(c => `<td>${esc(c)}</td>`).join("") + "</tr>";
-        const head = cols => "<tr>" + cols.map(c => `<th>${esc(c)}</th>`).join("") + "</tr>";
+  <div class="grid-2">
+    <div class="card" id="hostsCard"></div>
+    <div class="card" id="linksCard"></div>
+  </div>
+  <div id="switches"></div>
 
-        function fillSelects(hosts) {
-            const names = Object.keys(hosts);
-            const curSrc = $("src").value;
-            const curDst = $("dst").value;
-            const existing = Array.from($("src").options).map(o => o.value);
-            if (JSON.stringify(existing) === JSON.stringify(names)) return;
+  <script>
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const row = cells => "<tr>" + cells.map(c => `<td>${esc(c)}</td>`).join("") + "</tr>";
+    const head = cols => "<tr>" + cols.map(c => `<th>${esc(c)}</th>`).join("") + "</tr>";
 
-            $("src").innerHTML = "";
-            $("dst").innerHTML = "";
-            for (const name of names) {
-                $("src").add(new Option(name, name));
-                $("dst").add(new Option(name, name));
-            }
-            if (names.includes(curSrc)) $("src").value = curSrc;
-            if (names.includes(curDst)) $("dst").value = curDst;
-            else if ($("dst").options.length > 1) $("dst").selectedIndex = 1;
+    let lastSnap = null;
+    const sysMedia = window.matchMedia("(prefers-color-scheme: dark)");
+
+    function applyTheme(mode) {
+      localStorage.setItem("sdnsim_theme", mode);
+      const resolved = mode === "system" ? (sysMedia.matches ? "dark" : "light") : mode;
+      document.documentElement.setAttribute("data-resolved-theme", resolved);
+      document.querySelectorAll(".theme-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.mode === mode);
+      });
+      if (lastSnap) drawTopo(lastSnap);
+    }
+
+    document.querySelectorAll(".theme-btn").forEach(btn => {
+      btn.addEventListener("click", () => applyTheme(btn.dataset.mode));
+    });
+    sysMedia.addEventListener("change", () => {
+      if ((localStorage.getItem("sdnsim_theme") || "system") === "system") applyTheme("system");
+    });
+
+    function cssVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function fillSelects(hosts) {
+      const names = Object.keys(hosts || {});
+      const curSrc = $("src").value, curDst = $("dst").value;
+      const existing = Array.from($("src").options).map(o => o.value);
+      if (JSON.stringify(existing) === JSON.stringify(names)) return;
+      $("src").innerHTML = ""; $("dst").innerHTML = "";
+      for (const name of names) { $("src").add(new Option(name, name)); $("dst").add(new Option(name, name)); }
+      if (names.includes(curSrc)) $("src").value = curSrc;
+      if (names.includes(curDst)) $("dst").value = curDst;
+      else if ($("dst").options.length > 1) $("dst").selectedIndex = 1;
+    }
+
+    let prev = {};
+
+    function computePos(s) {
+      const pos = {};
+      if (s.layout) {
+        for (const c of (s.layout.controllers || [])) pos[c.name] = { x: c.x, y: c.y, kind: "ctrl", data: c };
+        for (const [n, info] of Object.entries(s.layout.switches || {})) if (s.switches[n]) pos[n] = { x: info.x, y: info.y, kind: "sw", ports: info.ports };
+        for (const [n, info] of Object.entries(s.layout.hosts || {})) if (s.hosts[n]) pos[n] = { x: info.x, y: info.y, kind: "host", ports: info.ports };
+        return pos;
+      }
+      Object.keys(s.switches).forEach((n, i) => pos[n] = { x: 140 + i * 230, y: 150, kind: "sw", ports: 4 });
+      const attach = {};
+      for (const l of s.links) for (const [h, o] of [[l.a, l.b], [l.b, l.a]]) if (s.hosts[h] && s.switches[o]) (attach[o] ||= []).push(h);
+      for (const [sw, hs] of Object.entries(attach)) hs.forEach((h, j) => pos[h] = { x: pos[sw].x + (j - (hs.length - 1) / 2) * 120, y: 280, kind: "host", ports: 1 });
+      Object.keys(s.hosts).forEach((h, idx) => { if (!pos[h]) pos[h] = { x: 120 + idx * 120, y: 280, kind: "host", ports: 1 }; });
+      return pos;
+    }
+
+    function iconSvg(kind, x, y, color) {
+      if (kind === "host") {
+        return `<g transform="translate(${x},${y})"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="${color}" stroke-width="2"/><path d="M8 21h8M12 17v4" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/></g>`;
+      }
+      if (kind === "sw") {
+        return `<g transform="translate(${x},${y})"><rect x="2" y="5" width="20" height="14" rx="3" fill="none" stroke="${color}" stroke-width="1.8"/><path d="M7 10h10m-2.5-2 2.5 2-2.5 2M17 14H7m2.5-2-2.5 2 2.5 2" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+      }
+      return `<g transform="translate(${x},${y})"><circle cx="12" cy="12" r="3.2" fill="${color}"/><path d="M12 3v5.5m0 7V21M3 12h5.5m7 0H21M5.8 5.8l3.8 3.8m4.8 4.8 3.8 3.8M18.2 5.8l-3.8 3.8m-4.8 4.8-3.8 3.8" stroke="${color}" stroke-width="1.8" stroke-linecap="round"/></g>`;
+    }
+
+    function linkPackets(s, l) {
+      if (l.a_to_b && l.b_to_a) return (l.a_to_b.sent_packets || 0) + (l.b_to_a.sent_packets || 0);
+      for (const [n, p] of [[l.a, l.a_port], [l.b, l.b_port]]) {
+        const c = s.switches[n] && s.switches[n].ports[p];
+        if (c) return c.rx_packets + c.tx_packets;
+      }
+      return 0;
+    }
+
+    function drawTopo(s) {
+      const pos = computePos(s);
+      if (!Object.keys(pos).length) {
+        $("topo").innerHTML = `<div class="empty-msg">Chưa có topology — hãy kéo thả thiết bị trên ứng dụng Desktop hoặc mở file JSON.</div>`;
+        return;
+      }
+      let maxX = 820, maxY = 410;
+      for (const p of Object.values(pos)) { maxX = Math.max(maxX, p.x + 130); maxY = Math.max(maxY, p.y + 80); }
+
+      const portBg = cssVar("--port-bg"), linkColor = cssVar("--link-line"), bgSub = cssVar("--bg-sub"), textColor = cssVar("--text");
+      const ctrlFill = cssVar("--ctrl-fill"), swFill = cssVar("--sw-fill"), hostFill = cssVar("--host-fill"), hostStroke = cssVar("--host-stroke"), textMuted = cssVar("--text-muted");
+
+      let g = `<svg width="${maxX}" height="${maxY}" viewBox="0 0 ${maxX} ${maxY}">`;
+
+      for (const cl of (s.layout?.control_links || [])) {
+        const cp = pos[cl.controller], sp = pos[cl.switch];
+        if (!cp || !sp) continue;
+        const isOk = cp.data.mode !== "openflow" || (s.controller?.switches && s.controller.switches[cl.switch]);
+        g += `<line x1="${cp.x}" y1="${cp.y}" x2="${sp.x}" y2="${sp.y}" stroke="${isOk ? "#8b5cf6" : "#ef4444"}" stroke-width="2" stroke-dasharray="5,5"/>`;
+        const cx = cp.x + (sp.x - cp.x) * 0.25, cy = cp.y + (sp.y - cp.y) * 0.25;
+        const sx = cp.x + (sp.x - cp.x) * 0.75, sy = cp.y + (sp.y - cp.y) * 0.75;
+        g += `<circle cx="${cx}" cy="${cy}" r="10.5" fill="${portBg}" stroke="#8b5cf6" stroke-width="1.3"/><text x="${cx}" y="${cy + 3.5}" font-size="10" font-weight="700" text-anchor="middle" fill="#8b5cf6">p${cl.c_port}</text>`;
+        g += `<circle cx="${sx}" cy="${sy}" r="11" fill="${portBg}" stroke="#8b5cf6" stroke-width="1.3"/><text x="${sx}" y="${sy + 3.5}" font-size="9.5" font-weight="700" text-anchor="middle" fill="#8b5cf6">OF</text>`;
+      }
+
+      for (const l of (s.links || [])) {
+        const a = pos[l.a], b = pos[l.b];
+        if (!a || !b) continue;
+        const key = `${l.a}:${l.a_port}-${l.b}:${l.b_port}`;
+        const pk = linkPackets(s, l);
+        const active = pk > (prev[key] ?? pk);
+        prev[key] = pk;
+        const w = 2.4 + Math.min(5, Math.log2(1 + pk) / 2);
+
+        g += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${active ? "#f97316" : linkColor}" stroke-width="${w}"/>`;
+        const ax = a.x + (b.x - a.x) * 0.25, ay = a.y + (b.y - a.y) * 0.25;
+        const bx = a.x + (b.x - a.x) * 0.75, by = a.y + (b.y - a.y) * 0.75;
+        g += `<circle cx="${ax}" cy="${ay}" r="10.5" fill="${portBg}" stroke="#3b82f6" stroke-width="1.3"/><text x="${ax}" y="${ay + 3.5}" font-size="10" font-weight="700" text-anchor="middle" fill="#3b82f6">p${l.a_port}</text>`;
+        g += `<circle cx="${bx}" cy="${by}" r="10.5" fill="${portBg}" stroke="#3b82f6" stroke-width="1.3"/><text x="${bx}" y="${by + 3.5}" font-size="10" font-weight="700" text-anchor="middle" fill="#3b82f6">p${l.b_port}</text>`;
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 8;
+        g += `<text x="${mx}" y="${my}" font-size="11" font-weight="700" text-anchor="middle" fill="${textColor}" paint-order="stroke" stroke="${bgSub}" stroke-width="4">${pk} pkt</text>`;
+      }
+
+      for (const [n, p] of Object.entries(pos)) {
+        if (p.kind === "ctrl") {
+          const modeTxt = p.data.mode === "openflow" ? `OF :${p.data.port}` : "Internal";
+          g += `<rect x="${p.x - 74}" y="${p.y - 26}" width="148" height="52" rx="12" fill="${ctrlFill}"/>`;
+          g += iconSvg("ctrl", p.x - 62, p.y - 12, "#ede9fe");
+          g += `<text x="${p.x - 30}" y="${p.y - 3}" font-size="13.5" font-weight="700" fill="#fff">${esc(n)}</text>`;
+          g += `<text x="${p.x - 30}" y="${p.y + 14}" font-size="10.5" fill="#ede9fe">${esc(modeTxt)} · ${p.data.ports || 8}p</text>`;
+        } else if (p.kind === "sw") {
+          g += `<rect x="${p.x - 56}" y="${p.y - 26}" width="112" height="52" rx="11" fill="${swFill}"/>`;
+          g += iconSvg("sw", p.x - 45, p.y - 12, "#dbeafe");
+          g += `<text x="${p.x - 14}" y="${p.y - 3}" font-size="13.5" font-weight="700" fill="#fff">${esc(n)}</text>`;
+          g += `<text x="${p.x - 14}" y="${p.y + 14}" font-size="10.5" fill="#dbeafe">${p.ports || 4} cổng</text>`;
+        } else {
+          g += `<rect x="${p.x - 62}" y="${p.y - 26}" width="124" height="52" rx="11" fill="${hostFill}" stroke="${hostStroke}" stroke-width="1.8"/>`;
+          g += iconSvg("host", p.x - 51, p.y - 12, "#0ea5e9");
+          g += `<text x="${p.x - 20}" y="${p.y - 3}" font-size="13.5" font-weight="700" fill="${textColor}">${esc(n)}</text>`;
+          g += `<text x="${p.x - 20}" y="${p.y + 14}" font-size="10.5" fill="${textMuted}">${esc(s.hosts[n]?.ip || "")}</text>`;
         }
+      }
+      $("topo").innerHTML = g + "</svg>";
+    }
 
-        let prev = {};
+    function idleText(f, now) {
+      if (f.idle_timeout == null) return "không hết hạn";
+      const left = Math.max(0, f.idle_timeout - (now - f.last_hit));
+      return `${f.idle_timeout}s (còn ${left.toFixed(1)}s)`;
+    }
 
-        function computePos(s) {
-            const pos = {};
-            if (s.layout) {
-                for (const c of (s.layout.controllers || [])) {
-                    pos[c.name] = { x: c.x, y: c.y, kind: "ctrl", data: c };
-                }
-                for (const [n, info] of Object.entries(s.layout.switches || {})) {
-                    if (s.switches[n]) pos[n] = { x: info.x, y: info.y, kind: "sw", ports: info.ports };
-                }
-                for (const [n, info] of Object.entries(s.layout.hosts || {})) {
-                    if (s.hosts[n]) pos[n] = { x: info.x, y: info.y, kind: "host", ports: info.ports };
-                }
-                return pos;
-            }
+    function fmtBw(b) {
+      if (b == null) return "không giới hạn";
+      if (b >= 1e9) return `${+(b / 1e9).toFixed(3)} Gb/s`;
+      if (b >= 1e6) return `${+(b / 1e6).toFixed(3)} Mb/s`;
+      if (b >= 1e3) return `${+(b / 1e3).toFixed(3)} kb/s`;
+      return `${b} b/s`;
+    }
 
-            // Fallback nếu không có s.layout
-            const swNames = Object.keys(s.switches);
-            swNames.forEach((n, i) => pos[n] = { x: 140 + i * 230, y: 150, kind: "sw", ports: 4 });
-            const attach = {};
-            for (const l of s.links) {
-                for (const [h, o] of [[l.a, l.b], [l.b, l.a]]) {
-                    if (s.hosts[h] && s.switches[o]) (attach[o] ||= []).push(h);
-                }
-            }
-            for (const [sw, hs] of Object.entries(attach)) {
-                hs.forEach((h, j) => pos[h] = { x: pos[sw].x + (j - (hs.length - 1) / 2) * 120, y: 280, kind: "host", ports: 1 });
-            }
-            Object.keys(s.hosts).forEach((h, idx) => {
-                if (!pos[h]) pos[h] = { x: 120 + idx * 120, y: 280, kind: "host", ports: 1 };
-            });
-            return pos;
+    function dirText(d) {
+      if (!d) return "-";
+      let t = `${d.sent_packets} gói, mất ${d.dropped_loss}, tràn ${d.dropped_queue}`;
+      if (d.queued) t += `, đợi ${d.queued}`;
+      return t;
+    }
+
+    function render(s) {
+      lastSnap = s;
+      const ctl = s.controller || { mode: "internal" };
+      $("ctl").textContent = ctl.mode === "openflow"
+        ? "OpenFlow " + Object.entries(ctl.switches || {}).map(([n, ok]) => n + (ok ? " ✔" : " ✘")).join(" ")
+        : "nội bộ";
+      $("time").textContent = (s.time || 0).toFixed(2) + " s";
+      $("pin").textContent = s.packet_in_total ?? 0;
+      fillSelects(s.hosts);
+      drawTopo(s);
+
+      const hostEntries = Object.entries(s.hosts || {});
+      let h = `<h3 class="card-title">Hosts (${hostEntries.length})</h3>`;
+      if (!hostEntries.length) h += `<p style="color:var(--text-muted);font-size:13px;">Chưa có Host nào.</p>`;
+      else {
+        h += `<div class="table-wrap"><table class="td-left">` + head(["Tên", "IP", "MAC", "Số ping", "RTT gần nhất (ms)"]);
+        for (const [name, x] of hostEntries) {
+          const last = x.rtts.length ? (x.rtts[x.rtts.length - 1] * 1000).toFixed(2) : "-";
+          h += row([name, x.ip, x.mac, x.rtts.length, last]);
         }
+        h += `</table></div>`;
+      }
+      $("hostsCard").innerHTML = h;
 
-        function linkPackets(s, l) {
-            if (l.a_to_b && l.b_to_a) {
-                return (l.a_to_b.sent_packets || 0) + (l.b_to_a.sent_packets || 0);
-            }
-            for (const [n, p] of [[l.a, l.a_port], [l.b, l.b_port]]) {
-                const c = s.switches[n] && s.switches[n].ports[p];
-                if (c) return c.rx_packets + c.tx_packets;
-            }
-            return 0;
+      const links = s.links || [];
+      let lk = `<h3 class="card-title">Liên kết (${links.length})</h3>`;
+      if (!links.length) lk += `<p style="color:var(--text-muted);font-size:13px;">Chưa có đường nối nào.</p>`;
+      else {
+        lk += `<div class="table-wrap"><table class="td-left">` + head(["Liên kết", "Độ trễ", "Băng thông", "Mất gói", "Chiều a → b", "Chiều b → a"]);
+        for (const l of links) {
+          lk += row([
+            `${l.a}:${l.a_port} — ${l.b}:${l.b_port}`,
+            `${+(l.delay * 1000).toFixed(2)} ms`,
+            fmtBw(l.bandwidth),
+            `${+((l.loss || 0) * 100).toFixed(1)}%`,
+            dirText(l.a_to_b),
+            dirText(l.b_to_a),
+          ]);
         }
+        lk += `</table></div>`;
+      }
+      $("linksCard").innerHTML = lk;
 
-        function drawTopo(s) {
-            const pos = computePos(s);
-            let maxX = 760, maxY = 390;
-            for (const p of Object.values(pos)) {
-                maxX = Math.max(maxX, p.x + 120);
-                maxY = Math.max(maxY, p.y + 80);
-            }
-            let g = `<svg width="${maxX}" height="${maxY}" viewBox="0 0 ${maxX} ${maxY}">`;
+      let sw = "";
+      for (const [name, x] of Object.entries(s.switches || {})) {
+        const portRows = Object.entries(x.ports || {})
+          .map(([p, c]) => row([p, c.rx_packets, c.rx_bytes, c.tx_packets, c.tx_bytes]))
+          .join("") || `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Chưa có lưu lượng cổng</td></tr>`;
 
-            // Đường nối Controller <-> Switch theo đúng control_links + nhãn cổng
-            for (const cl of (s.layout?.control_links || [])) {
-                const cp = pos[cl.controller], sp = pos[cl.switch];
-                if (!cp || !sp) continue;
-                const isOk = cp.data.mode !== "openflow" || (s.controller.switches && s.controller.switches[cl.switch]);
-                g += `<line x1="${cp.x}" y1="${cp.y}" x2="${sp.x}" y2="${sp.y}" stroke="${isOk ? "#8b5cf6" : "#ef4444"}" stroke-width="2" stroke-dasharray="5,5"/>`;
-                const cx = cp.x + (sp.x - cp.x) * 0.24, cy = cp.y + (sp.y - cp.y) * 0.24;
-                const sx = cp.x + (sp.x - cp.x) * 0.76, sy = cp.y + (sp.y - cp.y) * 0.76;
-                g += `<circle cx="${cx}" cy="${cy}" r="10" fill="#fff" stroke="#8b5cf6" stroke-width="1.3"/>`;
-                g += `<text x="${cx}" y="${cy + 3.5}" font-size="10" font-weight="700" text-anchor="middle" fill="#5b21b6">p${cl.c_port}</text>`;
-                g += `<circle cx="${sx}" cy="${sy}" r="11" fill="#fff" stroke="#8b5cf6" stroke-width="1.3"/>`;
-                g += `<text x="${sx}" y="${sy + 3.5}" font-size="9.5" font-weight="700" text-anchor="middle" fill="#5b21b6">OF</text>`;
-            }
+        const flowRows = (x.flows || []).map(f => {
+          const matchTxt = Object.entries(f.match || {}).map(([k, v]) => `${k}=${v}`).join(", ") || "(mọi gói)";
+          return row([matchTxt, f.out_port, f.priority, f.packets, f.bytes, idleText(f, s.time)]);
+        }).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Chưa có flow nào</td></tr>`;
 
-            // Các đường link dữ liệu + nhãn số cổng ở 2 đầu
-            for (const l of s.links) {
-                const a = pos[l.a], b = pos[l.b];
-                if (!a || !b) continue;
-                const key = `${l.a}:${l.a_port}-${l.b}:${l.b_port}`;
-                const pk = linkPackets(s, l);
-                const active = pk > (prev[key] ?? pk);
-                prev[key] = pk;
-                const w = 2.2 + Math.min(5, Math.log2(1 + pk) / 2);
+        sw += `
+          <div class="card">
+            <div class="card-head">
+              <span class="badge-sw">Switch ${esc(name)}</span>
+              <span class="pill">table-miss: <b>${x.table_misses}</b></span>
+            </div>
+            <div class="sw-grid">
+              <div class="sw-pane">
+                <h4>Thống kê cổng</h4>
+                <div class="table-wrap">
+                  <table class="td-center">${head(["Cổng", "rx gói", "rx byte", "tx gói", "tx byte"])}${portRows}</table>
+                </div>
+              </div>
+              <div class="sw-pane">
+                <h4>Bảng Flow (${(x.flows || []).length})</h4>
+                <div class="table-wrap">
+                  <table class="td-left">${head(["match", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout"])}${flowRows}</table>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      }
+      $("switches").innerHTML = sw;
+    }
 
-                g += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${active ? "#e67e22" : "#64748b"}" stroke-width="${w}"/>`;
-
-                const ax = a.x + (b.x - a.x) * 0.24, ay = a.y + (b.y - a.y) * 0.24;
-                const bx = a.x + (b.x - a.x) * 0.76, by = a.y + (b.y - a.y) * 0.76;
-                g += `<circle cx="${ax}" cy="${ay}" r="10" fill="#fff" stroke="#3b82f6" stroke-width="1.3"/>`;
-                g += `<text x="${ax}" y="${ay + 3.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#1e3a8a">p${l.a_port}</text>`;
-                g += `<circle cx="${bx}" cy="${by}" r="10" fill="#fff" stroke="#3b82f6" stroke-width="1.3"/>`;
-                g += `<text x="${bx}" y="${by + 3.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#1e3a8a">p${l.b_port}</text>`;
-
-                const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 7;
-                g += `<text x="${mx}" y="${my}" font-size="11" font-weight="600" text-anchor="middle" fill="#334155" paint-order="stroke" stroke="#fff" stroke-width="4">${pk} pkt</text>`;
-            }
-
-
-            // Vẽ các node
-            for (const [n, p] of Object.entries(pos)) {
-                if (p.kind === "ctrl") {
-                    const modeTxt = p.data.mode === "openflow" ? `OpenFlow :${p.data.port}` : "Internal";
-                    g += `<rect x="${p.x - 58}" y="${p.y - 22}" width="116" height="44" rx="10" fill="#6d28d9"/>`;
-                    g += `<text x="${p.x}" y="${p.y - 2}" font-size="13" font-weight="700" text-anchor="middle" fill="#fff">${esc(n)}</text>`;
-                    g += `<text x="${p.x}" y="${p.y + 14}" font-size="10" text-anchor="middle" fill="#ede9fe">${esc(modeTxt)} (${p.data.ports || 8}p)</text>`;
-                } else if (p.kind === "sw") {
-                    g += `<rect x="${p.x - 42}" y="${p.y - 22}" width="84" height="44" rx="8" fill="#2563eb"/>`;
-                    g += `<text x="${p.x}" y="${p.y - 2}" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">${esc(n)}</text>`;
-                    g += `<text x="${p.x}" y="${p.y + 14}" font-size="10" text-anchor="middle" fill="#dbeafe">${p.ports || 4} cổng</text>`;
-                } else {
-                    g += `<rect x="${p.x - 48}" y="${p.y - 24}" width="96" height="48" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>`;
-                    g += `<text x="${p.x}" y="${p.y - 4}" font-size="13" font-weight="700" text-anchor="middle" fill="#1e3a8a">${esc(n)}</text>`;
-                    g += `<text x="${p.x}" y="${p.y + 12}" font-size="10.5" text-anchor="middle" fill="#475569">${esc(s.hosts[n]?.ip || "")}</text>`;
-                }
-            }
-            $("topo").innerHTML = g + "</svg>";
+    function connectWs() {
+      const ws = new WebSocket(`ws://${location.host}/ws`);
+      ws.onopen = () => { $("status").textContent = "đã kết nối"; };
+      ws.onerror = () => { $("status").textContent = "lỗi kết nối"; };
+      ws.onclose = () => { $("status").textContent = "mất kết nối"; setTimeout(connectWs, 1000); };
+      ws.onmessage = e => {
+        try {
+          render(JSON.parse(e.data));
+        } catch (err) {
+          $("status").textContent = "lỗi hiển thị: " + err.message;
         }
+      };
+    }
 
-        function idleText(f, now) {
-            if (f.idle_timeout == null) return "không hết hạn";
-            const left = Math.max(0, f.idle_timeout - (now - f.last_hit));
-            return `${f.idle_timeout}s (còn ${left.toFixed(1)}s)`;
-        }
+    $("go").onclick = () => {
+      if (!$("src").value || !$("dst").value) return;
+      fetch("/ping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ src: $("src").value, dst: $("dst").value }),
+      });
+    };
 
-        function fmtBw(b) {
-            if (b == null) return "không giới hạn";
-            if (b >= 1e9) return `${+(b / 1e9).toFixed(3)} Gb/s`;
-            if (b >= 1e6) return `${+(b / 1e6).toFixed(3)} Mb/s`;
-            if (b >= 1e3) return `${+(b / 1e3).toFixed(3)} kb/s`;
-            return `${b} b/s`;
-        }
-
-        function dirText(d) {
-            if (!d) return "-";
-            let t = `${d.sent_packets} gói, mất ${d.dropped_loss}, tràn ${d.dropped_queue}`;
-            if (d.queued) t += `, đợi ${d.queued}`;
-            return t;
-        }
-
-        function linksHtml(links) {
-            if (!links.length) return "";
-            let h = "<h3>Liên kết</h3><table>" +
-                head(["Liên kết", "độ trễ", "băng thông", "mất gói", "hàng đợi", "chiều a → b", "chiều b → a"]);
-            for (const l of links) {
-                h += row([
-                    `${l.a}:${l.a_port} — ${l.b}:${l.b_port}`,
-                    `${+(l.delay * 1000).toFixed(3)} ms`,
-                    fmtBw(l.bandwidth),
-                    `${+((l.loss || 0) * 100).toFixed(2)}%`,
-                    l.queue_limit ?? "-",
-                    dirText(l.a_to_b),
-                    dirText(l.b_to_a),
-                ]);
-            }
-            return h + "</table>";
-        }
-
-        function render(s) {
-            $("ctl").textContent = s.controller.mode === "openflow"
-                ? "OpenFlow " + Object.entries(s.controller.switches || {}).map(([n, ok]) => n + (ok ? " ✔" : " ✘")).join(" ")
-                : "nội bộ";
-            $("time").textContent = s.time.toFixed(2) + " s";
-            $("pin").textContent = s.packet_in_total;
-            fillSelects(s.hosts);
-            drawTopo(s);
-            $("links").innerHTML = linksHtml(s.links);
-
-            let h = "<h3>Host</h3><table>" + head(["Tên", "IP", "MAC", "Số ping", "RTT gần nhất (ms)"]);
-            for (const [name, x] of Object.entries(s.hosts)) {
-                const last = x.rtts.length ? (x.rtts[x.rtts.length - 1] * 1000).toFixed(2) : "-";
-                h += row([name, x.ip, x.mac, x.rtts.length, last]);
-            }
-            $("hosts").innerHTML = h + "</table>";
-
-            let sw = "";
-            for (const [name, x] of Object.entries(s.switches)) {
-                sw += `<h3>Switch ${esc(name)} (table-miss: ${x.table_misses})</h3>`;
-                sw += "<table>" + head(["Cổng", "rx gói", "rx byte", "tx gói", "tx byte"]);
-                for (const [p, c] of Object.entries(x.ports)) {
-                    sw += row([p, c.rx_packets, c.rx_bytes, c.tx_packets, c.tx_bytes]);
-                }
-                sw += "</table><table>" + head(["match", "cổng ra", "ưu tiên", "gói", "byte", "idle_timeout"]);
-                for (const f of x.flows) {
-                    const matchTxt = Object.entries(f.match).map(([k, v]) => `${k}=${v}`).join(", ") || "(mọi gói)";
-                    sw += row([matchTxt, f.out_port, f.priority, f.packets, f.bytes, idleText(f, s.time)]);
-                }
-                sw += "</table>";
-            }
-            $("switches").innerHTML = sw;
-        }
-
-        const ws = new WebSocket(`ws://${location.host}/ws`);
-        ws.onopen = () => $("status").textContent = "đã kết nối";
-        ws.onclose = () => $("status").textContent = "mất kết nối";
-        ws.onmessage = e => render(JSON.parse(e.data));
-
-        $("go").onclick = () => {
-            if (!$("src").value || !$("dst").value) return;
-            fetch("/ping", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ src: $("src").value, dst: $("dst").value }),
-            });
-        };
-    </script>
+    applyTheme(localStorage.getItem("sdnsim_theme") || "system");
+    fetch("/snapshot").then(r => r.json()).then(render).catch(() => {});
+    connectWs();
+  </script>
 </body>
-
 </html>
