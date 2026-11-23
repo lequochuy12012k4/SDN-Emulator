@@ -624,20 +624,26 @@ class SimulationManager:
                 return {"running": True, "pid": self._osken_proc.pid}  # type: ignore[union-attr]
             self.stop_osken()
 
-        repo_root = Path(__file__).resolve().parents[3]
-        script = repo_root / "examples" / "os_ken_controller.py"
-        if not script.exists():
-            raise FileNotFoundError(f"Không tìm thấy {script}")
-
-        args = [sys.executable, "-u", str(script), str(port)]
-        if idle_timeout is not None and int(idle_timeout) > 0:
-            args.append(str(int(idle_timeout)))
+        if getattr(sys, "frozen", False):
+            args = [sys.executable, "--run-osken", str(port)]
+            if idle_timeout is not None and int(idle_timeout) > 0:
+                args.append(str(int(idle_timeout)))
+            cwd = str(Path(sys._MEIPASS))  # type: ignore[attr-defined]
+        else:
+            repo_root = Path(__file__).resolve().parents[3]
+            script = repo_root / "examples" / "os_ken_controller.py"
+            if not script.exists():
+                raise FileNotFoundError(f"Không tìm thấy {script}")
+            args = [sys.executable, "-u", str(script), str(port)]
+            if idle_timeout is not None and int(idle_timeout) > 0:
+                args.append(str(int(idle_timeout)))
+            cwd = str(repo_root)
 
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         self._osken_proc = subprocess.Popen(
             args,
-            cwd=str(repo_root),
+            cwd=cwd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

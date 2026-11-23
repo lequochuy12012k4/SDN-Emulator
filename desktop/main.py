@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 from pathlib import Path
+import runpy
+import shutil
 import socket
+import sys
 import threading
 import time
 from typing import Any
@@ -15,8 +19,38 @@ import webview
 from sdnsim.desktop.server import create_desktop_app
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-TOPOLOGIES_DIR = REPO_ROOT / "topologies"
+def _app_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _bundle_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parent.parent
+
+
+APP_ROOT = _app_root()
+BUNDLE_ROOT = _bundle_root()
+TOPOLOGIES_DIR = APP_ROOT / "topologies"
+
+
+def _ensure_sample_topologies() -> None:
+    TOPOLOGIES_DIR.mkdir(parents=True, exist_ok=True)
+    bundled_topo = BUNDLE_ROOT / "topologies"
+    if bundled_topo.exists() and bundled_topo != TOPOLOGIES_DIR:
+        for src in bundled_topo.glob("*.json"):
+            dst = TOPOLOGIES_DIR / src.name
+            if not dst.exists():
+                shutil.copy2(src, dst)
+
+
+def _run_bundled_osken(args: list[str]) -> None:
+    script = BUNDLE_ROOT / "examples" / "os_ken_controller.py"
+    sys.path.insert(0, str(BUNDLE_ROOT))
+    sys.argv = [str(script), *args]
+    runpy.run_path(str(script), run_name="__main__")
 
 
 def _pick_port(preferred: int = 8000) -> int:
@@ -28,7 +62,7 @@ def _pick_port(preferred: int = 8000) -> int:
         return int(s.getsockname()[1])
 
 
-def _wait_ready(url: str, timeout: float = 10.0) -> None:
+def _wait_ready(url: str, timeout: float = 12.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -39,11 +73,53 @@ def _wait_ready(url: str, timeout: float = 10.0) -> None:
             time.sleep(0.1)
     raise RuntimeError(f"Server không phản hồi tại {url}")
 
+def _set_win32_icon(window_title: str, icon_path: Path, win: webview.Window | None = None) -> None:
+    if sys.platform != "win32" or not icon_path.exists():
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    user32.FindWindowW.restype = wintypes.HWND
+    user32.LoadImageW.argtypes = [
+        wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT,
+        ctypes.c_int, ctypes.c_int, wintypes.UINT,
+    ]
+    user32.LoadImageW.restype = wintypes.HANDLE
+    user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.SendMessageW.restype = ctypes.c_ssize_t
+
+    IMAGE_ICON = 1
+    LR_LOADFROMFILE = 0x0010
+    WM_SETICON = 0x0080
+    ICON_SMALL = 0
+    ICON_BIG = 1
+
+    h_small = user32.LoadImageW(None, str(icon_path), IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+    h_big = user32.LoadImageW(None, str(icon_path), IMAGE_ICON, 32, 32, LR_LOADFROMFILE)
+    if not h_small and not h_big:
+        return
+
+    for _ in range(30):
+        hwnd = None
+        try:
+            if win is not None and getattr(win, "native", None) is not None:
+                hwnd = int(win.native.Handle)
+        except Exception:
+            hwnd = None
+        if not hwnd:
+            hwnd = user32.FindWindowW(None, window_title)
+        if hwnd:
+            if h_small:
+                user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_small)
+            if h_big:
+                user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, h_big)
+            return
+        time.sleep(0.1)
 
 class DesktopBridge:
-    """Cầu nối JS <-> Python trong PyWebView.
-    Mọi thuộc tính nội bộ phải bắt đầu bằng '_' để PyWebView không quét đệ quy vào .NET Window.
-    """
+    """Cầu nối JS <-> Python trong PyWebView (thuộc tính nội bộ phải bắt đầu bằng '_')."""
 
     def __init__(self, topologies_dir: Path, sim: Any = None) -> None:
         self._topologies_dir = topologies_dir
@@ -103,8 +179,12 @@ class DesktopBridge:
         path.write_bytes(self._sim.capture.to_pcap_bytes())
         return str(path)
 
-
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "--run-osken":
+        _run_bundled_osken(sys.argv[2:])
+        return
+
+    _ensure_sample_topologies()
     port = _pick_port(8000)
     app = create_desktop_app(topologies_dir=TOPOLOGIES_DIR)
 
@@ -117,15 +197,27 @@ def main() -> None:
     _wait_ready(f"{base_url}/api/health")
 
     bridge = DesktopBridge(TOPOLOGIES_DIR, sim=app.state.sim)
+    title = "SDN Emulator — Desktop Topology Studio"
     window = webview.create_window(
-        title="SDN Emulator — Desktop Topology Studio",
+        title=title,
         url=f"{base_url}/desktop",
-        width=1220,
-        height=780,
-        min_size=(900, 600),
+        width=1240,
+        height=800,
+        min_size=(920, 620),
         js_api=bridge,
     )
     bridge._window = window
+
+    icon_path = BUNDLE_ROOT / "desktop" / "app.ico"
+    if icon_path.exists():
+        def _apply_icon(*_args: Any) -> None:
+            threading.Thread(
+                target=_set_win32_icon,
+                args=(title, icon_path, window),
+                daemon=True,
+            ).start()
+
+        window.events.shown += _apply_icon
 
     try:
         webview.start()
@@ -136,4 +228,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

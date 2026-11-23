@@ -69,6 +69,7 @@ def test_web_ui_paths_serve_templates_and_assets(tmp_path):
             ("/assets/style/desktop.css", "text/css"),
             ("/assets/script/index.js", "javascript"),
             ("/assets/script/desktop.js", "javascript"),
+            ("/assets/template/icon.png", "image/png"),
         ):
             response = client.get(path)
             assert response.status_code == 200

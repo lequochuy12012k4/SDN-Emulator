@@ -13,8 +13,14 @@ from pydantic import BaseModel, Field
 
 from sdnsim.desktop.sim import SimulationManager
 from sdnsim.topology.model import TopologyModel
+import sys
 
-UI_DIR = Path(__file__).resolve().parent.parent / "ui"
+def _ui_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "sdnsim" / "ui"  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parent.parent / "ui"
+
+UI_DIR = _ui_dir()
 INDEX_HTML = UI_DIR / "template" / "index.html"
 DESKTOP_HTML = UI_DIR / "template" / "desktop.html"
 
@@ -50,7 +56,12 @@ def create_desktop_app(
     autostart_osken: bool = True,
 ) -> FastAPI:
     repo_root = Path(__file__).resolve().parents[3]
-    topo_dir = topologies_dir or (repo_root / "topologies")
+    if topologies_dir is not None:
+        topo_dir = topologies_dir
+    elif getattr(sys, "frozen", False):
+        topo_dir = Path(sys.executable).resolve().parent / "topologies"
+    else:
+        topo_dir = Path(__file__).resolve().parents[3] / "topologies"
     topo_dir.mkdir(parents=True, exist_ok=True)
 
     if initial_topology and initial_topology.exists():
