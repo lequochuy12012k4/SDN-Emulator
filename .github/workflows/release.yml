@@ -2,18 +2,54 @@ name: Separate Releases (Windows & Linux/macOS)
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   # ========================================================
+  # JOB 0: ĐỌC PHIÊN BẢN TỪ PYPROJECT.TOML
+  # ========================================================
+  get-version:
+    name: Get Version from pyproject.toml
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ver.outputs.tag }}
+      raw_version: ${{ steps.ver.outputs.raw_version }}
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài đặt Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Đọc version từ pyproject.toml
+        id: ver
+        run: |
+          python -c '
+          import tomllib, os
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          ver = data.get("project", {}).get("version") or data.get("tool", {}).get("poetry", {}).get("version")
+          if not ver:
+              raise SystemExit("Không tìm thấy version trong pyproject.toml")
+          tag = ver if str(ver).startswith("v") else f"v{ver}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"raw_version={ver}\n")
+              out.write(f"tag={tag}\n")
+          '
+
+  # ========================================================
   # JOB 1: BUILD, TEST & PHÁT HÀNH BẢN WINDOWS RIÊNG BIỆT
   # ========================================================
   release-windows:
     name: Build & Release Windows
+    needs: get-version
     runs-on: windows-latest
     steps:
       - name: Checkout mã nguồn
@@ -84,12 +120,11 @@ jobs:
           }
           Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
-      # Đẩy riêng bản Windows lên Release với tag: <tag>-windows
       - name: Phát hành Release riêng cho Windows
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}-windows
-          name: SDN Emulator ${{ github.ref_name }} (Windows)
+          tag_name: ${{ needs.get-version.outputs.tag }}-windows
+          name: SDN Emulator ${{ needs.get-version.outputs.tag }} (Windows)
           body: |
             ## SDN Emulator — Bản phát hành dành riêng cho Windows
             - Chạy trực tiếp trên Windows 10/11 x64 (không cần cài thêm Python hay môi trường).
@@ -101,6 +136,7 @@ jobs:
   # ========================================================
   build-linux:
     name: Build & Test Linux
+    needs: get-version
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout mã nguồn
@@ -167,6 +203,7 @@ jobs:
   # ========================================================
   build-macos:
     name: Build & Test macOS
+    needs: get-version
     runs-on: macos-latest
     steps:
       - name: Checkout mã nguồn
@@ -228,7 +265,7 @@ jobs:
   # ========================================================
   release-linux-macos:
     name: Release Linux & macOS
-    needs: [build-linux, build-macos]
+    needs: [get-version, build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Tải về file nhị phân Linux
@@ -249,14 +286,13 @@ jobs:
           chmod +x dist-unix/SDN-Emulator-macos-arm64
           ls -lh dist-unix/
 
-      # Đẩy riêng bản Linux/macOS lên Release với tag: <tag>-linux-macos
       - name: Phát hành Release riêng cho Linux & macOS
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}-linux-macos
-          name: SDN Emulator ${{ github.ref_name }} (Linux & macOS)
+          tag_name: ${{ needs.get-version.outputs.tag }}-linux-macos
+          name: SDN Emulator ${{ needs.get-version.outputs.tag }} (Linux & macOS)
           body: |
-            ## SDN Emulator — Bản phát hành dành cho Linux & macOS
+            ## SDN Emulator — Bản phát hành dành riêng cho Linux & macOS
             - **Linux (x64):** `SDN-Emulator-linux-x64` (chạy lệnh `chmod +x SDN-Emulator-linux-x64 && ./SDN-Emulator-linux-x64`).
             - **macOS (Apple Silicon M1/M2/M3/M4):** `SDN-Emulator-macos-arm64`.
           files: |
