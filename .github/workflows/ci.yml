@@ -1,0 +1,55 @@
+name: CI Test Suite
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os-name }} (Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
+        python-version: ['3.11', '3.12', '3.14']
+        include:
+          - os: windows-latest
+            os-name: Windows
+          - os: ubuntu-22.04
+            os-name: Linux
+          - os: macos-latest
+            os-name: macOS
+
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài đặt Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      # Cài đặt thư viện hệ thống cho Linux (WebKit2GTK cho PyWebView)
+      - name: Cài đặt dependencies hệ thống (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 libgirepository1.0-dev
+
+      - name: Cài đặt thư viện Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install fastapi uvicorn websockets httpx os-ken pywebview
+
+      - name: Chạy toàn bộ Unit & Integration Tests (pytest)
+        run: |
+          pytest -v --durations=10
