@@ -62,9 +62,13 @@ class Switch:
 
         self.ports = {}
         self.flows = []
+        self.groups = {}
+        self.meters = {}
         self._sweep_scheduled = False
         self.port_stats = defaultdict(_new_port_stats)
         self.table_misses = 0
+        self.table_lookups = 0
+        self.table_matched = 0
         channel.register(self)
 
     def receive(self, in_port, pkt):
@@ -93,20 +97,35 @@ class Switch:
         self._process_packet(in_port, pkt)
 
     def _process_packet(self, in_port, pkt):
-        # Giữ nguyên toàn bộ phần logic cũ trong receive() của bạn từ đoạn
-        # kiểm tra flow hết hạn lười -> flow_matches(...) -> _tx(...) -> table_misses -> packet_in(...)
         now = self.sched.now
+        self.table_lookups += 1
         self.flows = [
             f for f in self.flows
             if f["idle_timeout"] is None or (now - f["last_hit"]) < f["idle_timeout"]
         ]
         for f in sorted(self.flows, key=lambda f: -f["priority"]):
             if flow_matches(f["match"], in_port, pkt):
+                self.table_matched += 1
                 f["packets"] += 1
                 f["bytes"] += pkt.size
                 f["last_hit"] = now
-                self._tx(f["out_port"], pkt)
+
+                # 1. Áp dụng Meter (nếu có)
+                meter_id = f.get("meter_id")
+                if meter_id is not None and not self._meter_allows(meter_id, pkt):
+                    return
+
+                # 2. Áp dụng Group hoặc chuyển tiếp trực tiếp ra cổng
+                group_id = f.get("group_id")
+                if group_id is not None:
+                    self._group_output(group_id, pkt)
+                elif f.get("out_port") is not None:
+                    if f["out_port"] == "FLOOD":
+                        self.packet_out(pkt, "FLOOD", in_port=in_port)
+                    else:
+                        self._tx(f["out_port"], pkt)
                 return
+
         self.table_misses += 1
         print(f"[{now*1000:7.2f} ms] {self.name}: table-miss -> PACKET_IN ({pkt.eth_src}->{pkt.eth_dst})")
         self.channel.packet_in(self, in_port, pkt)
@@ -124,11 +143,13 @@ class Switch:
             flow for flow in self.flows
             if not (flow["match"] == match and flow["priority"] == priority)
         ]
-        self.flows.append({"match": match, "out_port": out_port, "priority": priority,
-                            "packets": 0, "bytes": 0, "idle_timeout": idle_timeout,
-                            "cookie": cookie, "group_id": group_id, "meter_id": meter_id,
-                        "installed_at": self.sched.now,
-                        "last_hit": self.sched.now})
+        self.flows.append({
+            "match": match, "out_port": out_port, "priority": priority,
+            "packets": 0, "bytes": 0, "idle_timeout": idle_timeout,
+            "cookie": cookie, "group_id": group_id, "meter_id": meter_id,
+            "installed_at": self.sched.now,
+            "last_hit": self.sched.now
+        })
         if idle_timeout is not None:
             self._ensure_sweep()
 
@@ -158,7 +179,7 @@ class Switch:
                 self.meters.pop(meter_id, None)
             return
         rate_bits_per_second = rate * 1000
-        # OpenFlow burst_size is in kilobits; without BURST, allow one second of rate.
+        # OpenFlow burst_size tính theo kilobits; nếu không có cờ BURST, cho phép 1 giây tốc độ.
         capacity_bits = (burst_size * 1000 if flags & 4 else rate_bits_per_second)
         self.meters[meter_id] = {
             "flags": flags, "rate": rate, "burst_size": burst_size,
@@ -216,7 +237,7 @@ class Switch:
                 kept.append(f)
         self.flows = kept
         if any(f["idle_timeout"] is not None for f in self.flows):
-            self._ensure_sweep()    # còn flow có timeout thì quét tiếp, hết thì dừng
+            self._ensure_sweep()
 
     def _tx(self, port, pkt):
         s = self.port_stats[port]

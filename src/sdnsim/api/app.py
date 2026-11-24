@@ -14,7 +14,7 @@ from sdnsim.metrics.collector import Metrics
 from sdnsim.openflow.channel import OpenFlowChannel
 from sdnsim.topology.network import build_network
 
-INDEX = Path(__file__).resolve().parent.parent / "ui" / "index.html"
+INDEX = Path(__file__).resolve().parent.parent / "ui" / "template" / "index.html"
 log = logging.getLogger("sdnsim")
 
 
