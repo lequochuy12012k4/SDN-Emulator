@@ -22,7 +22,6 @@ python -m PyInstaller `
   @iconArgs `
   --paths "src" `
   --add-data "src\sdnsim\ui;sdnsim\ui" `
-  --add-data "topologies;topologies" `
   --add-data "examples\os_ken_controller.py;examples" `
   --hidden-import "clr" `
   --hidden-import "pythonnet" `
