@@ -3,7 +3,7 @@
 ; Non-commercial use only.
 
 #define MyAppName "SDN Emulator"
-#define MyAppVersion "0.0.1"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "LeQuocHuy, Inc."
 #define MyAppExeName "SDN-Emulator.exe"
 #define MyAppAssocName MyAppName + " File"
