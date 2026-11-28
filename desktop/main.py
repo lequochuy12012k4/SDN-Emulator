@@ -33,22 +33,7 @@ def _bundle_root() -> Path:
 
 APP_ROOT = _app_root()
 BUNDLE_ROOT = _bundle_root()
-
-def _writable_topologies_dir() -> Path:
-    candidate = APP_ROOT / "topologies"
-    try:
-        candidate.mkdir(parents=True, exist_ok=True)
-        probe = candidate / ".write_test"
-        probe.write_text("ok", encoding="utf-8")
-        probe.unlink(missing_ok=True)
-        return candidate
-    except OSError:
-        fallback = Path.home() / "Documents" / "SDN-Emulator" / "topologies"
-        fallback.mkdir(parents=True, exist_ok=True)
-        return fallback
-
-
-TOPOLOGIES_DIR = _writable_topologies_dir()
+TOPOLOGIES_DIR = APP_ROOT / "topologies"
 
 
 def _ensure_sample_topologies() -> None:
@@ -77,16 +62,17 @@ def _pick_port(preferred: int = 8000) -> int:
         return int(s.getsockname()[1])
 
 
-def _wait_ready(url: str, timeout: float = 12.0) -> None:
+def _wait_ready(url: str, timeout: float = 10.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=1.0) as resp:
+            with urllib.request.urlopen(url, timeout=0.3) as resp:
                 if resp.status == 200:
                     return
         except Exception:
-            time.sleep(0.1)
+            time.sleep(0.025)  # Thăm dò cực nhanh mỗi 25ms
     raise RuntimeError(f"Server không phản hồi tại {url}")
+
 
 def _set_win32_icon(window_title: str, icon_path: Path, win: webview.Window | None = None) -> None:
     if sys.platform != "win32" or not icon_path.exists():
@@ -108,8 +94,6 @@ def _set_win32_icon(window_title: str, icon_path: Path, win: webview.Window | No
     IMAGE_ICON = 1
     LR_LOADFROMFILE = 0x0010
     WM_SETICON = 0x0080
-    ICON_SMALL = 0
-    ICON_BIG = 1
 
     h_small = user32.LoadImageW(None, str(icon_path), IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
     h_big = user32.LoadImageW(None, str(icon_path), IMAGE_ICON, 32, 32, LR_LOADFROMFILE)
@@ -127,15 +111,14 @@ def _set_win32_icon(window_title: str, icon_path: Path, win: webview.Window | No
             hwnd = user32.FindWindowW(None, window_title)
         if hwnd:
             if h_small:
-                user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_small)
+                user32.SendMessageW(hwnd, WM_SETICON, 0, h_small)
             if h_big:
-                user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, h_big)
+                user32.SendMessageW(hwnd, WM_SETICON, 1, h_big)
             return
-        time.sleep(0.1)
+        time.sleep(0.05)
+
 
 class DesktopBridge:
-    """Cầu nối JS <-> Python trong PyWebView (thuộc tính nội bộ phải bắt đầu bằng '_')."""
-
     def __init__(self, topologies_dir: Path, sim: Any = None) -> None:
         self._topologies_dir = topologies_dir
         self._sim = sim
@@ -194,6 +177,7 @@ class DesktopBridge:
         path.write_bytes(self._sim.capture.to_pcap_bytes())
         return str(path)
 
+
 def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] == "--run-osken":
         _run_bundled_osken(sys.argv[2:])
@@ -209,10 +193,11 @@ def main() -> None:
     thread.start()
 
     base_url = f"http://127.0.0.1:{port}"
+    # Đợi server sẵn sàng cực nhanh (mất ~0.1s - 0.2s) để tránh lỗi ERR_CONNECTION_REFUSED
     _wait_ready(f"{base_url}/api/health")
 
-    bridge = DesktopBridge(TOPOLOGIES_DIR, sim=app.state.sim)
     title = "SDN Emulator — Desktop Topology Studio"
+    bridge = DesktopBridge(TOPOLOGIES_DIR, sim=app.state.sim)
     window = webview.create_window(
         title=title,
         url=f"{base_url}/desktop",
@@ -231,7 +216,6 @@ def main() -> None:
                 args=(title, icon_path, window),
                 daemon=True,
             ).start()
-
         window.events.shown += _apply_icon
 
     try:

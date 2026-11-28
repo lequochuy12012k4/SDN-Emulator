@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -13,16 +14,51 @@ from pydantic import BaseModel, Field
 
 from sdnsim.desktop.sim import SimulationManager
 from sdnsim.topology.model import TopologyModel
-import sys
 
-def _ui_dir() -> Path:
+
+def _find_ui_dir() -> Path:
+    candidates: list[Path] = []
+    # 1. Khi chạy bản đóng gói PyInstaller
     if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS) / "sdnsim" / "ui"  # type: ignore[attr-defined]
-    return Path(__file__).resolve().parent.parent / "ui"
+        meipass = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        candidates.extend([
+            meipass / "sdnsim" / "ui",
+            meipass / "src" / "sdnsim" / "ui",
+            meipass / "ui",
+            Path(sys.executable).resolve().parent / "sdnsim" / "ui",
+            Path(sys.executable).resolve().parent / "ui",
+        ])
+    # 2. Khi chạy từ mã nguồn
+    here = Path(__file__).resolve().parent
+    candidates.extend([
+        here.parent / "ui",                          # src/sdnsim/ui
+        here.parent.parent / "sdnsim" / "ui",
+        here.parent.parent / "ui",
+        Path.cwd() / "src" / "sdnsim" / "ui",
+        Path.cwd() / "sdnsim" / "ui",
+    ])
+    for p in candidates:
+        if (p / "templates").is_dir() or (p / "desktop.html").is_file():
+            return p
+    return here.parent / "ui"
 
-UI_DIR = _ui_dir()
-INDEX_HTML = UI_DIR / "template" / "index.html"
-DESKTOP_HTML = UI_DIR / "template" / "desktop.html"
+
+UI_DIR = _find_ui_dir()
+
+
+def _find_ui_file(name: str) -> Path:
+    # Ưu tiên tìm trong templates/, nếu không có thì tìm ở thư mục ui/ gốc
+    in_templates = UI_DIR / "templates" / name
+    if in_templates.is_file():
+        return in_templates
+    in_root = UI_DIR / name
+    if in_root.is_file():
+        return in_root
+    return in_templates
+
+
+INDEX_HTML = _find_ui_file("index.html")
+DESKTOP_HTML = _find_ui_file("desktop.html")
 
 
 class PingRequest(BaseModel):
@@ -43,8 +79,10 @@ class LoadFileRequest(BaseModel):
 class SaveFileRequest(BaseModel):
     name: str
 
+
 class CaptureToggleRequest(BaseModel):
     enabled: bool
+
 
 def create_desktop_app(
     initial_topology: Path | None = None,
@@ -53,15 +91,14 @@ def create_desktop_app(
     speed: float = 1.0,
     autorun: bool = True,
     push_interval: float = 0.2,
-    autostart_osken: bool = True,
 ) -> FastAPI:
-    repo_root = Path(__file__).resolve().parents[3]
     if topologies_dir is not None:
         topo_dir = topologies_dir
     elif getattr(sys, "frozen", False):
         topo_dir = Path(sys.executable).resolve().parent / "topologies"
     else:
-        topo_dir = Path(__file__).resolve().parents[3] / "topologies"
+        repo_root = Path(__file__).resolve().parents[3]
+        topo_dir = repo_root / "topologies"
     topo_dir.mkdir(parents=True, exist_ok=True)
 
     if initial_topology and initial_topology.exists():
@@ -73,6 +110,34 @@ def create_desktop_app(
     sim = SimulationManager(model, topo_dir, step=step, speed=speed)
     reload_lock = asyncio.Lock()
 
+    def _port_is_free(host: str, port: int) -> bool:
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.1)
+            return s.connect_ex((host, port)) != 0
+
+    def _sync_osken_for_model() -> None:
+        if not autorun:
+            return
+        has_of = any(c.get("mode") == "openflow" for c in sim.model.controllers.values())
+        if not has_of:
+            if sim.osken_running():
+                sim.stop_osken()
+            return
+        for c in sim.model.controllers.values():
+            if c.get("mode") == "openflow":
+                c_host = c.get("host", "127.0.0.1")
+                c_port = int(c.get("port", 6653))
+                if c_host in ("127.0.0.1", "localhost") and not sim.osken_running() and _port_is_free(c_host, c_port):
+                    try:
+                        sim.start_osken(
+                            port=c_port,
+                            idle_timeout=c.get("idle_timeout"),
+                            source_name=c.get("name", "c0"),
+                        )
+                    except Exception as exc:
+                        sim.logs.push("controller", c.get("name", "c0"), "ERROR", f"Không thể tự bật os-ken: {exc}", sim.sched.now)
+    
     async def sim_loop() -> None:
         while True:
             try:
@@ -84,17 +149,18 @@ def create_desktop_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         loop = asyncio.get_running_loop()
-        task = None
+        sim.bind_loop(loop)
+        task = asyncio.create_task(sim_loop()) if autorun else None
+
+        if autorun:
+            for c in sim.model.controllers.values():
+                if c.get("mode") == "openflow":
+                    sim.start_osken(
+                        port=int(c.get("port", 6653)),
+                        idle_timeout=c.get("idle_timeout"),
+                        source_name=c.get("name", "c0"),
+                    )
         try:
-            ctrl = sim.local_osken_controller()
-            if autostart_osken and ctrl:
-                sim.start_osken(
-                    port=int(ctrl["port"]),
-                    idle_timeout=ctrl.get("idle_timeout"),
-                    source_name=ctrl["name"],
-                )
-            sim.bind_loop(loop)
-            task = asyncio.create_task(sim_loop()) if autorun else None
             yield
         finally:
             if task:
@@ -109,22 +175,55 @@ def create_desktop_app(
     app = FastAPI(title="SDN Emulator Desktop + Web", lifespan=lifespan)
     app.state.sim = sim
     app.state.sched = sim.sched
-    app.mount("/assets", StaticFiles(directory=UI_DIR), name="assets")
 
-    # --- Trang giao diện ---
+    # =========================================================================
+    # MOUNT STATIC FILES ĐỂ TRÌNH DUYỆT TẢI ĐƯỢC CSS & JAVASCRIPT
+    # =========================================================================
+    scripts_dir = UI_DIR / "scripts"
+    styles_dir = UI_DIR / "styles"
+    templates_dir = UI_DIR / "templates"
+
+    if scripts_dir.is_dir():
+        app.mount("/scripts", StaticFiles(directory=scripts_dir), name="scripts")
+        app.mount("/desktop/scripts", StaticFiles(directory=scripts_dir), name="desktop_scripts")
+
+    if styles_dir.is_dir():
+        app.mount("/styles", StaticFiles(directory=styles_dir), name="styles")
+        app.mount("/desktop/styles", StaticFiles(directory=styles_dir), name="desktop_styles")
+
+    if templates_dir.is_dir():
+        app.mount("/templates", StaticFiles(directory=templates_dir), name="templates")
+    # =========================================================================
+
+    # --- Phục vụ giao diện HTML ---
     @app.get("/")
     def web_index():
+        if not INDEX_HTML.is_file():
+            raise HTTPException(500, f"Không tìm thấy file index.html tại: {INDEX_HTML}")
         return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-store"})
 
     @app.get("/desktop")
     def desktop_index():
+        if not DESKTOP_HTML.is_file():
+            raise HTTPException(500, f"Không tìm thấy file desktop.html tại: {DESKTOP_HTML}")
         return FileResponse(DESKTOP_HTML, headers={"Cache-Control": "no-store"})
+
+    @app.get("/favicon.ico")
+    def favicon():
+        for candidate in [
+            UI_DIR / "templates" / "icon.png",
+            UI_DIR / "icon.png",
+            Path(__file__).resolve().parents[3] / "desktop" / "app.ico",
+        ]:
+            if candidate.is_file():
+                return FileResponse(candidate)
+        raise HTTPException(404, "Favicon không tồn tại")
 
     @app.get("/api/health")
     def health():
         return {"ok": True}
 
-    # --- API Dashboard Web tương thích ngược ---
+    # --- API Dashboard & Ping ---
     @app.get("/snapshot")
     def snapshot():
         return sim.snapshot()
@@ -150,7 +249,7 @@ def create_desktop_app(
         except WebSocketDisconnect:
             pass
 
-    # --- API Topology Studio (đồng bộ 100% Desktop <-> Web) ---
+    # --- API Quản lý Topology Studio ---
     @app.get("/api/topology")
     def get_topology():
         return {
@@ -165,6 +264,7 @@ def create_desktop_app(
                 new_model = TopologyModel.from_spec(spec)
                 await sim.reload_topology(new_model)
                 app.state.sched = sim.sched
+                _sync_osken_for_model()
             except Exception as exc:
                 raise HTTPException(400, str(exc)) from exc
         return {"ok": True, "spec": sim.model.to_spec(), "snapshot": sim.snapshot()}
@@ -192,6 +292,8 @@ def create_desktop_app(
                 new_model = TopologyModel.from_spec(spec)
                 await sim.reload_topology(new_model)
                 app.state.sched = sim.sched
+                _sync_osken_for_model()
+                app.state.sched = sim.sched
             except Exception as exc:
                 raise HTTPException(400, str(exc)) from exc
         return {"ok": True, "spec": sim.model.to_spec()}
@@ -218,7 +320,7 @@ def create_desktop_app(
             raise HTTPException(404, str(exc)) from exc
         return res
 
-    # --- Controller Logging & os-ken subprocess ---
+    # --- Controller Logging & Quản lý os-ken ---
     @app.get("/api/logs")
     def get_logs(since: int = 0, category: str | None = None, source: str | None = None):
         return {"entries": sim.logs.recent(since_id=since, category=category, source=source)}
@@ -229,25 +331,25 @@ def create_desktop_app(
         return {"ok": True}
 
     @app.post("/api/controller/osken/start")
-    async def start_osken(name: str | None = None):
+    def start_osken(name: str | None = None):
         try:
-            ctrl = sim.local_osken_controller(name)
-            if ctrl is None:
-                raise ValueError("Không tìm thấy Controller os-ken cục bộ")
-            if not sim.osken_running():
-                await sim._stop_openflow_channels()
-            result = sim.start_osken(
-                port=int(ctrl["port"]),
-                idle_timeout=ctrl.get("idle_timeout"),
-                source_name=ctrl["name"],
-            )
-            sim._start_openflow_tasks()
-            return result
+            ctrl = None
+            if name and name in sim.model.controllers:
+                ctrl = sim.model.controllers[name]
+            else:
+                ctrl = next(
+                    (c for c in sim.model.controllers.values() if c.get("mode") == "openflow"),
+                    next(iter(sim.model.controllers.values()), None),
+                )
+            port = int(ctrl.get("port", 6653)) if ctrl else 6653
+            idle = ctrl.get("idle_timeout") if ctrl else None
+            src_name = ctrl.get("name", "c0") if ctrl else "c0"
+            return sim.start_osken(port=port, idle_timeout=idle, source_name=src_name)
         except Exception as exc:
             raise HTTPException(400, str(exc)) from exc
 
     @app.post("/api/controller/osken/stop")
-    async def stop_osken():
+    def stop_osken():
         return sim.stop_osken()
 
     @app.websocket("/ws/logs")
@@ -255,7 +357,6 @@ def create_desktop_app(
         await ws.accept()
         q = sim.logs.subscribe()
         try:
-            # Gửi các log hiện có trước
             for entry in sim.logs.recent(since_id=0):
                 await ws.send_json(entry)
             while True:
@@ -265,7 +366,8 @@ def create_desktop_app(
             pass
         finally:
             sim.logs.unsubscribe(q)
-    # --- Wireshark Capture (.pcap & Live TZSP) ---
+
+    # --- Bắt gói Wireshark (.pcap & Live TZSP) ---
     @app.get("/api/capture/status")
     def capture_status():
         return {
@@ -292,4 +394,5 @@ def create_desktop_app(
             media_type="application/vnd.tcpdump.pcap",
             headers={"Content-Disposition": 'attachment; filename="sdnsim_capture.pcap"'},
         )
+
     return app

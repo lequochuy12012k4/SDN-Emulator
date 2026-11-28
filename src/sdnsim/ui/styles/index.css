@@ -305,3 +305,4 @@ h4 {
     font-weight: 700;
     font-size: 12.5px;
 }
+.pkt-dot { pointer-events: none; filter: drop-shadow(0 0 6px currentColor); }

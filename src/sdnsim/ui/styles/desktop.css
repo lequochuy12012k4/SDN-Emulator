@@ -705,6 +705,11 @@ svg#canvas {
     stroke-width: 3.5 !important;
 }
 
+.pkt-dot {
+    pointer-events: none;
+    filter: drop-shadow(0 0 6px currentColor);
+}
+
 .toast {
     position: fixed;
     bottom: 16px;
