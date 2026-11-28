@@ -26,7 +26,7 @@ def test_ping_unknown_host_returns_404():
 
 def test_index_page_served():
     client = TestClient(create_app(TOPOLOGY, autorun=False))
-    r = client.get("/")
+    r = client.get("/templates/index.html")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
 
